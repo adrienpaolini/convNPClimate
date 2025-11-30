@@ -116,6 +116,7 @@ def train_elev(model,
           y_target_t,
           get_value, 
           fold,
+          n_folds,
           n_epochs = 100):
     """
     Top level training loop for the model
@@ -132,7 +133,15 @@ def train_elev(model,
         if epoch>0:
             del training_data
             del held_out
-        training_data, held_out = get_fold_data((8766, 10958), y_context, y_target)
+        
+        n_samples = y_context.shape[0]
+        fold_size = n_samples // n_folds
+        start = fold * fold_size
+        end = start + fold_size
+        if fold == n_folds - 1:
+            end = n_samples
+        
+        training_data, held_out = get_fold_data((start, end), y_context, y_target)
 
         # Compute training objective.
         train_obj = train_epoch_elev(model, opt, training_data, ll, elev, dists)
