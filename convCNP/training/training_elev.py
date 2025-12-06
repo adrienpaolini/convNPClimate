@@ -136,7 +136,7 @@ def train_elev(model,
     # Run the training loop.
     print("Training")
 
-    with open(stats_file, 'w') as f:
+    with open(stats_file, 'a') as f:
         writer = csv.writer(f)
 
         for epoch in range(n_epochs):
