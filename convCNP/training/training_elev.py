@@ -2,6 +2,7 @@
 Training functions: models with MLP elevation
 """
 
+import csv
 import torch
 import numpy as np 
 import scipy
@@ -82,12 +83,14 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value):
         #plt.plot(pred_mean)
         #plt.show()
 
-
-    print("Mean absolute error: {}".format(np.median(maes[~np.isnan(maes)])))
-    print("Pearson correlation: {}".format(np.median(pearsons[~np.isnan(pearsons)])))
-    print("Spearman correlation: {}".format(np.median(spearmans[~np.isnan(spearmans)])))
+    median_mae = np.median(maes[~np.isnan(maes)])
+    median_pearson = np.median(pearsons[~np.isnan(pearsons)])
+    median_spearman = np.median(spearmans[~np.isnan(spearmans)])
+    print("Mean absolute error: {}".format(median_mae))
+    print("Pearson correlation: {}".format(median_pearson))
+    print("Spearman correlation: {}".format(median_spearman))
     
-    return eval_ll
+    return eval_ll, median_mae, median_pearson, median_spearman
 
 def train_epoch_elev(model, opt, training_data, ll, elev, dists):
     """
@@ -117,10 +120,14 @@ def train_elev(model,
           get_value, 
           fold,
           n_folds,
-          n_epochs = 100):
+          n_epochs = 100,
+          stats_file = None):
     """
     Top level training loop for the model
     """
+    if not stats_file:
+        raise ValueError("Please provide a stats file to log training statistics to.")
+    
     test_score = []
 
     best_obj = 5
@@ -128,30 +135,37 @@ def train_elev(model,
     # Run the training loop.
     print("Training")
 
-    for epoch in range(n_epochs):
-        print("Starting epoch: {}".format(epoch))
-        if epoch>0:
-            del training_data
-            del held_out
-        
-        n_samples = y_context.shape[0]
-        fold_size = n_samples // n_folds
-        start = fold * fold_size
-        end = start + fold_size
-        if fold == n_folds - 1:
-            end = n_samples
-        
-        training_data, held_out = get_fold_data((start, end), y_context, y_target)
+    with open(stats_file, 'w') as f:
+        writer = csv.writer(f)
 
-        # Compute training objective.
-        train_obj = train_epoch_elev(model, opt, training_data, ll, elev, dists)
-        test_obj = eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value)
-        test_score.append(test_obj)
-        print('Epoch %s: train NLL %.3f, test NLL %.3f' % (epoch, train_obj, test_obj))
+        for epoch in range(n_epochs):
+            print("Starting epoch: {}".format(epoch))
+            if epoch>0:
+                del training_data
+                del held_out
+            
+            n_samples = y_context.shape[0]
+            fold_size = n_samples // n_folds
+            start = fold * fold_size
+            end = start + fold_size
+            if fold == n_folds - 1:
+                end = n_samples
+            
+            training_data, held_out = get_fold_data((start, end), y_context, y_target)
 
-        if test_obj < best_obj:
-            torch.save({'epoch': epoch,
-                'model_state_dict': model.state_dict(),
-                'optimizer_state_dict': opt.state_dict(),
-                'loss': test_score}, output_dir+"model_fold_{}".format(fold))
-            best_obj = test_obj
+            # Compute training objective.
+            train_obj = train_epoch_elev(model, opt, training_data, ll, elev, dists)
+            test_obj, median_mae, median_pearson, median_spearman = eval_epoch_elev(
+                model, held_out, ll, elev, dists, y_target_t, get_value)
+            test_score.append(test_obj)
+            print('Epoch %s: train NLL %.3f, test NLL %.3f' % (epoch, train_obj, test_obj))
+
+            writer.writerow([fold, median_mae, median_pearson, median_spearman, epoch, train_obj, test_obj])
+            f.flush()
+
+            if test_obj < best_obj:
+                torch.save({'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': opt.state_dict(),
+                    'loss': test_score}, output_dir+"model_fold_{}".format(fold))
+                best_obj = test_obj
