@@ -5,6 +5,7 @@ Training functions: models with MLP elevation
 import csv
 import torch
 import numpy as np 
+import os
 import scipy
 from .utils import log_exp, generate_context_mask, get_fold_data
 
@@ -160,12 +161,12 @@ def train_elev(model,
             test_score.append(test_obj)
             print('Epoch %s: train NLL %.3f, test NLL %.3f' % (epoch, train_obj, test_obj))
 
-            writer.writerow([fold, median_mae, median_pearson, median_spearman, epoch, train_obj, test_obj])
+            writer.writerow([fold, median_mae, median_pearson, median_spearman, epoch, train_obj, test_obj.item()])
             f.flush()
 
             if test_obj < best_obj:
                 torch.save({'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': opt.state_dict(),
-                    'loss': test_score}, output_dir+"model_fold_{}".format(fold))
+                    'loss': test_score}, os.path.join(output_dir, f"model_fold_{fold}"))
                 best_obj = test_obj
