@@ -37,7 +37,7 @@ class Params:
     SEED: int = 42
 
     # logging/output parameters
-    RUN_NAME: str = 'base-30-5folds'
+    TRIAL_NAME: str = 'base-30-5folds'
 
 
 def save_params_json(params: Params, output_path: Path) -> None:
