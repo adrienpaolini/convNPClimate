@@ -2,6 +2,7 @@
 datasets/EOBS
 datasets/ERA5_Land
 datasets/MeteoSwiss
+datasets/topo_subset.zarr
 
 # Byte-compiled files
 *.pyc

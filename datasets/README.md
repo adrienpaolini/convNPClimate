@@ -18,7 +18,7 @@
 Download and store them in the following folder structure:
 
 - datasets
-  - EOBS
+  - EOBS [not currently used in project]
     - max_temperature
       - t_max_day_EOBS_v30_CH_1971-2024.nc
     - min_temperature
@@ -48,6 +48,8 @@ Download and store them in the following folder structure:
       - t2m-1961.nc
       - ...
       - t2m-2023.nc
+    - geopotential
+      - era5_land_geopotential.nc
   - MeteoSwiss
     - RhiresD_v2.0_swiss.lv95
       - RhiresD_ch01h.swiss.lv95_196101010000_196112310000.nc
