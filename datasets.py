@@ -7,11 +7,29 @@ from pathlib import Path
 from typing import Tuple
 
 import numpy as np
+import pyproj
 import torch
 import xarray as xr
 
 from json_utils import save_dataclass_json, load_dataclass_json
 from convCNP.validation.utils import get_dists
+
+
+# Coordinate transformers for Swiss LV95 (EPSG:2056) <-> WGS84 (EPSG:4326)
+_WGS84_TO_LV95 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
+_LV95_TO_WGS84 = pyproj.Transformer.from_crs("EPSG:2056", "EPSG:4326", always_xy=True)
+
+
+def wgs84_to_lv95(lon: np.ndarray, lat: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Convert WGS84 (lon, lat) to Swiss LV95 (x, y) coordinates."""
+    x, y = _WGS84_TO_LV95.transform(lon, lat)
+    return x, y
+
+
+def lv95_to_wgs84(x: np.ndarray, y: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """Convert Swiss LV95 (x, y) to WGS84 (lon, lat) coordinates."""
+    lon, lat = _LV95_TO_WGS84.transform(x, y)
+    return lon, lat
 
 
 @dataclasses.dataclass
@@ -57,28 +75,35 @@ def load_metadata_json(metadata_json: Path) -> Era5Metadata:
 
 
 def load_era5_data(
-    var_glob: str,
+    var_glob: Path | str,
     var_name: str = 't2m_max',
     year_start: int | None = None,
-    device: torch.device | None = None
-) -> Tuple[torch.Tensor, Era5Metadata]:
+    geopotential_glob: Path | str | None = None,
+    geopotential_var_name: str = 'z',
+    device: torch.device | None = None,
+) -> Tuple[torch.Tensor, Era5Metadata, torch.Tensor | None]:
     """
     Loads ERA5 data from NetCDF files matching the given glob pattern.
     Optionally filters data starting from a specific year.
+    Optionally loads geopotential data and converts to altitude in meters.
 
     Args:
         var_glob: Glob pattern for NetCDF files
         var_name: Name of the variable in the dataset
         year_start: Optional year to filter data from
+        geopotential_glob: Optional glob pattern for geopotential NetCDF files
+        geopotential_var_name: Name of geopotential variable (default 'z')
         device: Torch device to load tensor to (defaults to CPU)
 
     Returns:
         tensor: Processed input tensor with shape (time, channels, lat, lon)
         stats: Era5Metadata containing normalization parameters and grid coordinates
+        altitude: Tensor with altitude in meters, shape (lat, lon), or None if geopotential_glob not provided
     """
     if device is None:
         device = torch.device('cpu')
 
+    var_glob = str(var_glob)  # Ensure it's a string for xarray
     # Data load
     print(f"Loading ERA5 data from: {var_glob}")
     ds = xr.open_mfdataset(var_glob, combine='by_coords')
@@ -151,17 +176,108 @@ def load_era5_data(
     tensor_Z = torch.from_numpy(tensor_Z.values.astype(np.float32)).to(device)
     print(f"Final tensor_Z torch tensor with shape (time, channel, lat, lon): {tensor_Z.shape}, dtype: {tensor_Z.dtype}")
 
-    return tensor_Z, stats
+    # Load geopotential and convert to altitude if provided
+    altitude_tensor, altitude = None, None
+    if geopotential_glob is not None:
+        geopotential_glob = str(geopotential_glob)
+        print(f"\nLoading geopotential data from: {geopotential_glob}")
+        geo_ds = xr.open_mfdataset(geopotential_glob, combine='by_coords')
+        print(f"Geopotential dataset dimensions: {geo_ds.dims}")
+
+        # Verify grids match
+        geo_lat = geo_ds.latitude.values
+        geo_lon = geo_ds.longitude.values
+        print(f"Geopotential lat range: [{geo_lat.min():.4f}, {geo_lat.max():.4f}], shape: {geo_lat.shape}")
+        print(f"Geopotential lon range: [{geo_lon.min():.4f}, {geo_lon.max():.4f}], shape: {geo_lon.shape}")
+        print(f"ERA5 data lat range: [{lat_coords.min():.4f}, {lat_coords.max():.4f}], shape: {lat_coords.shape}")
+        print(f"ERA5 data lon range: [{lon_coords.min():.4f}, {lon_coords.max():.4f}], shape: {lon_coords.shape}")
+
+        # Check if grids match exactly
+        grids_match_exactly = (
+            geo_lat.shape == lat_coords.shape and
+            geo_lon.shape == lon_coords.shape and
+            np.allclose(geo_lat, lat_coords, atol=1e-6) and
+            np.allclose(geo_lon, lon_coords, atol=1e-6)
+        )
+
+        if grids_match_exactly:
+            print("✓ Geopotential and ERA5 data grids match exactly")
+        else:
+            # Check if ERA5 coords are a subset of geopotential coords (within tolerance)
+            # This handles cases where geopotential covers a larger area but same resolution
+            lat_subset = all(np.min(np.abs(geo_lat - t)) < 1e-4 for t in lat_coords)
+            lon_subset = all(np.min(np.abs(geo_lon - t)) < 1e-4 for t in lon_coords)
+
+            if lat_subset and lon_subset:
+                print("✓ ERA5 grid points are subset of geopotential grid (using nearest-neighbor selection)")
+                # Use sel with nearest method - this is like a left join on coordinates
+                geo_ds = geo_ds.sel(latitude=lat_coords, longitude=lon_coords, method='nearest')
+                print(f"  Selected geopotential dimensions: {geo_ds.dims}")
+            else:
+                print("⚠ WARNING: Geopotential grid does not contain all ERA5 points!")
+                print("  Falling back to linear interpolation...")
+                geo_ds = geo_ds.interp(latitude=lat_coords, longitude=lon_coords, method='linear')
+                print(f"  Interpolated geopotential dimensions: {geo_ds.dims}")
+
+        # Convert geopotential to altitude: altitude = geopotential / g
+        # Geopotential is in m²/s², g = 9.80665 m/s²
+        GRAVITY = 9.80665
+        geopotential = geo_ds[geopotential_var_name]
+
+        # If there's a time dimension, take first timestep (geopotential is static)
+        if 'time' in geopotential.dims:
+            geopotential = geopotential.isel(time=0)
+            print("  Selected first time step from geopotential (static field)")
+
+        altitude = geopotential / GRAVITY
+        print(f"Converted geopotential to altitude (m). Range: [{float(altitude.min()):.1f}, {float(altitude.max()):.1f}] m")
+
+        # Convert to torch tensor
+        # altitude_tensor = torch.from_numpy(altitude.values.astype(np.float32)).to(device)
+        # print(f"Altitude tensor shape: {altitude_tensor.shape}, dtype: {altitude_tensor.dtype}")
+
+    return tensor_Z, stats, altitude
+
+
+# Load high-resolution topography data
+def load_high_res_topography(
+    topography_path: Path | str,
+    data_var: str = 'DEM',
+) -> xr.DataArray:
+    """
+    Loads high-resolution topography data from a Zarr file.
+
+    Args:
+        topography_path: Path to the Zarr directory containing topography data
+    Returns:
+        xarray.DataArray with topography data
+    """
+    print(f"Loading high-resolution topography from Zarr: {topography_path}")
+    dem_ds = xr.open_zarr(str(topography_path))
+    print(f"Topography dataset dimensions: {dem_ds.dims}")
+    # Assuming the topography variable is named 'elevation' in the dataset
+    if data_var in dem_ds:
+        dem_data = dem_ds[data_var]
+    else:
+        # Fallback: take the first data variable
+        first_var = list(dem_ds.data_vars)[0]
+        print(f"Warning: '{data_var}' variable not found. Using first variable '{first_var}' instead.")
+        dem_data = dem_ds[first_var]
+
+    print(f"Topography data shape: {dem_data.shape}, dtype: {dem_data.dtype}")
+    return dem_data
 
 
 def prepare_meteoswiss_targets(
     meteo_swiss_glob: str,
     normalization_stats: Era5Metadata,
     data_var: str = 'TmaxD',
-    elev_var: str | None = None,
+    grid_elevation: xr.DataArray | None = None,
+    hi_res_elevation: xr.DataArray | None = None,
     convert_to_kelvin: bool = False,
-    year_start: int | None = None
-) -> Tuple[xr.DataArray, xr.DataArray, xr.DataArray]:
+    year_start: int | None = None,
+    device: torch.device | None = None,
+) -> Tuple[xr.DataArray, xr.DataArray, torch.Tensor]:
     """
     Transforms the MeteoSwiss Dataset into the Target Tensors (x, y, e).
 
@@ -169,16 +285,18 @@ def prepare_meteoswiss_targets(
         meteo_swiss_glob: Glob pattern for MeteoSwiss NetCDF files
         normalization_stats: Stats from input for normalization
         data_var: Name of temperature variable (default 'TmaxD')
-        elev_var: Name of elevation variable (if exists)
+        grid_elevation: xarray.DataArray with ERA5 grid elevation (optional)
+        hi_res_elevation: xarray.DataArray with high-res topography (optional)
         convert_to_kelvin: Set True if MeteoSwiss is Celsius and input is Kelvin
         year_start: Optional year to filter data from
+        device: Torch device to load elevation tensor to (defaults to CPU)
 
     Returns:
-        X (Locations): (point, 2) -> [Lat_norm, Lon_norm]
-        Y (Truth):     (time, point) -> [Temp_norm]
-        E (Topo):      (point, 3) -> [True_Elev, Elev_Diff, mTPI] (Zeros if missing)
+        X (Locations): xr.DataArray (point, 2) -> [Lat_norm, Lon_norm]
+        Y (Truth):     xr.DataArray (time, point) -> [Temp_norm]
+        E (Topo):      torch.Tensor (point, 3) -> [True_Elev, Elev_Diff, mTPI]
     """
-    ds = xr.open_mfdataset(meteo_swiss_glob, combine='by_coords', data_vars='all')
+    ds = xr.open_mfdataset(str(meteo_swiss_glob), combine='by_coords', data_vars='all')
     if year_start is not None:
         ds = ds.sel(time=slice(f'{year_start}-01-01', None))
 
@@ -255,33 +373,62 @@ def prepare_meteoswiss_targets(
 
     feature_names = ['true_elev', 'elev_diff', 'mTPI']
 
-    if elev_var and elev_var in ds_flat:
-        print(f"  -> Found elevation '{elev_var}'. Filling feature 0, zeroing 1 & 2.")
-        elev_flat = ds_flat[elev_var]
+    if hi_res_elevation is not None and grid_elevation is not None:
+        # Get target coordinates as numpy arrays
+        lat_vals = lat_flat.values if hasattr(lat_flat, 'values') else lat_flat.compute().values
+        lon_vals = lon_flat.values if hasattr(lon_flat, 'values') else lon_flat.compute().values
 
-        # Create zeros for the missing features (Diff and mTPI)
-        # xr.zeros_like creates a lazy dask array if input is dask
-        zeros = xr.zeros_like(elev_flat)
+        # Convert WGS84 lat/lon to Swiss LV95 (x, y) for hi-res DEM lookup
+        print("  -> Converting target coordinates to Swiss LV95 for hi-res DEM lookup...")
+        target_x_lv95, target_y_lv95 = wgs84_to_lv95(lon_vals, lat_vals)
 
-        # Stack: [Elev, 0, 0]
-        tensor_e = xr.concat([elev_flat, zeros, zeros], dim="feature")
+        # Interpolate hi-res DEM at target points using LV95 coordinates
+        # The hi-res DEM has dimensions (y, x) with x, y as the index coordinates
+        print("  -> Interpolating hi-res DEM at target points...")
+        true_elev = hi_res_elevation.interp(
+            x=xr.DataArray(target_x_lv95, dims='point'),
+            y=xr.DataArray(target_y_lv95, dims='point'),
+            method='linear'
+        )
+
+        # Interpolate ERA5 grid elevation at target points using lat/lon
+        # ERA5 grid elevation has dimensions (latitude, longitude)
+        print("  -> Interpolating ERA5 grid elevation at target points...")
+        grid_elev = grid_elevation.interp(
+            latitude=xr.DataArray(lat_vals, dims='point'),
+            longitude=xr.DataArray(lon_vals, dims='point'),
+            method='linear'
+        )
+
+        # Compute elevation difference
+        elev_diff = true_elev - grid_elev
+
+        print(f"  -> True elevation range: [{float(true_elev.min()):.1f}, {float(true_elev.max()):.1f}] m")
+        print(f"  -> Grid elevation range: [{float(grid_elev.min()):.1f}, {float(grid_elev.max()):.1f}] m")
+        print(f"  -> Elevation diff range: [{float(elev_diff.min()):.1f}, {float(elev_diff.max()):.1f}] m")
+
+        # Stack: [True Elev, Elev Diff, mTPI (zeros for now)]
+        zeros = xr.zeros_like(true_elev)
+        tensor_e = xr.concat([true_elev, elev_diff, zeros], dim="feature", coords='minimal')
     else:
-        print("  -> Warning: No elevation variable found. Filling ALL 3 features with Zeros.")
-        # Create zeros matching the spatial dimension
+        print("  -> Warning: Elevation data not provided. Filling ALL 3 features with zeros.")
         zeros = xr.zeros_like(lat_flat)
-
-        # Stack: [0, 0, 0]
         tensor_e = xr.concat([zeros, zeros, zeros], dim="feature")
 
     # Assign coordinates and transpose to (point, feature)
     tensor_e = tensor_e.assign_coords(feature=feature_names)
     tensor_e = tensor_e.transpose("point", "feature")
 
+    # Convert elevation to torch tensor
+    if device is None:
+        device = torch.device('cpu')
+    tensor_e_torch = torch.from_numpy(tensor_e.values.astype(np.float32)).to(device)
+
     print(f"Final X (Locations): {tensor_x.sizes}")
     print(f"Final Y (Targets):   {tensor_y.sizes}")
-    print(f"Final E (Topo):      {tensor_e.sizes}")
+    print(f"Final E (Topo):      {tensor_e_torch.shape}, dtype: {tensor_e_torch.dtype}")
 
-    return tensor_x, tensor_y, tensor_e
+    return tensor_x, tensor_y, tensor_e_torch
 
 
 def calculate_dists_meteoswiss(

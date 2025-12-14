@@ -4,6 +4,7 @@ Training parameters dataclass and serialization utilities.
 
 import dataclasses
 from pathlib import Path
+from typing import Literal
 
 from json_utils import save_dataclass_json, load_dataclass_json
 
@@ -38,6 +39,8 @@ class Params:
 
     # logging/output parameters
     TRIAL_NAME: str = 'base-30-5folds'
+
+    RUN_TYPE: Literal['local', 'cloud'] = 'local'
 
 
 def save_params_json(params: Params, output_path: Path) -> None:
