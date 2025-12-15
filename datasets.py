@@ -242,30 +242,42 @@ def load_era5_data(
 # Load high-resolution topography data
 def load_high_res_topography(
     topography_path: Path | str,
-    data_var: str = 'DEM',
-) -> xr.DataArray:
+    dem_var: str = 'DEM',
+    tpi_var: str = 'TPI_500M',
+) -> Tuple[xr.DataArray, xr.DataArray]:
     """
-    Loads high-resolution topography data from a Zarr file.
+    Loads high-resolution topography data (DEM and TPI) from a Zarr file.
 
     Args:
         topography_path: Path to the Zarr directory containing topography data
+        dem_var: Name of the DEM variable (default 'DEM')
+        tpi_var: Name of the TPI variable (default 'TPI_500M')
+
     Returns:
-        xarray.DataArray with topography data
+        Tuple of (dem_data, tpi_data) as xarray.DataArrays
     """
     print(f"Loading high-resolution topography from Zarr: {topography_path}")
-    dem_ds = xr.open_zarr(str(topography_path))
-    print(f"Topography dataset dimensions: {dem_ds.dims}")
-    # Assuming the topography variable is named 'elevation' in the dataset
-    if data_var in dem_ds:
-        dem_data = dem_ds[data_var]
-    else:
-        # Fallback: take the first data variable
-        first_var = list(dem_ds.data_vars)[0]
-        print(f"Warning: '{data_var}' variable not found. Using first variable '{first_var}' instead.")
-        dem_data = dem_ds[first_var]
+    topo_ds = xr.open_zarr(str(topography_path))
+    print(f"Topography dataset dimensions: {topo_ds.dims}")
 
-    print(f"Topography data shape: {dem_data.shape}, dtype: {dem_data.dtype}")
-    return dem_data
+    # Load DEM
+    if dem_var in topo_ds:
+        dem_data = topo_ds[dem_var]
+    else:
+        first_var = list(topo_ds.data_vars)[0]
+        print(f"Warning: '{dem_var}' variable not found. Using first variable '{first_var}' instead.")
+        dem_data = topo_ds[first_var]
+    print(f"DEM shape: {dem_data.shape}, dtype: {dem_data.dtype}")
+
+    # Load TPI
+    if tpi_var in topo_ds:
+        tpi_data = topo_ds[tpi_var]
+        print(f"TPI ({tpi_var}) shape: {tpi_data.shape}, dtype: {tpi_data.dtype}")
+    else:
+        print(f"Warning: '{tpi_var}' variable not found. TPI will be None.")
+        tpi_data = None
+
+    return dem_data, tpi_data
 
 
 def prepare_meteoswiss_targets(
@@ -274,6 +286,7 @@ def prepare_meteoswiss_targets(
     data_var: str = 'TmaxD',
     grid_elevation: xr.DataArray | None = None,
     hi_res_elevation: xr.DataArray | None = None,
+    hi_res_tpi: xr.DataArray | None = None,
     convert_to_kelvin: bool = False,
     year_start: int | None = None,
     device: torch.device | None = None,
@@ -287,6 +300,7 @@ def prepare_meteoswiss_targets(
         data_var: Name of temperature variable (default 'TmaxD')
         grid_elevation: xarray.DataArray with ERA5 grid elevation (optional)
         hi_res_elevation: xarray.DataArray with high-res topography (optional)
+        hi_res_tpi: xarray.DataArray with high-res TPI data (optional, e.g. TPI_2000M)
         convert_to_kelvin: Set True if MeteoSwiss is Celsius and input is Kelvin
         year_start: Optional year to filter data from
         device: Torch device to load elevation tensor to (defaults to CPU)
@@ -407,9 +421,21 @@ def prepare_meteoswiss_targets(
         print(f"  -> Grid elevation range: [{float(grid_elev.min()):.1f}, {float(grid_elev.max()):.1f}] m")
         print(f"  -> Elevation diff range: [{float(elev_diff.min()):.1f}, {float(elev_diff.max()):.1f}] m")
 
-        # Stack: [True Elev, Elev Diff, mTPI (zeros for now)]
-        zeros = xr.zeros_like(true_elev)
-        tensor_e = xr.concat([true_elev, elev_diff, zeros], dim="feature", coords='minimal')
+        # Interpolate TPI at target points if provided
+        if hi_res_tpi is not None:
+            print("  -> Interpolating TPI at target points...")
+            tpi = hi_res_tpi.interp(
+                x=xr.DataArray(target_x_lv95, dims='point'),
+                y=xr.DataArray(target_y_lv95, dims='point'),
+                method='linear'
+            )
+            print(f"  -> TPI range: [{float(tpi.min()):.1f}, {float(tpi.max()):.1f}] m")
+        else:
+            print("  -> TPI data not provided. Filling with zeros.")
+            tpi = xr.zeros_like(true_elev)
+
+        # Stack: [True Elev, Elev Diff, mTPI]
+        tensor_e = xr.concat([true_elev, elev_diff, tpi], dim="feature", coords='minimal')
     else:
         print("  -> Warning: Elevation data not provided. Filling ALL 3 features with zeros.")
         zeros = xr.zeros_like(lat_flat)
