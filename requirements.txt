@@ -12,6 +12,7 @@ scikit-learn>=1.7.1
 scipy>=1.16.1
 seaborn>=0.13.2
 skorch>=0.8.0
+torch>=2.5.0
 tqdm>=4.67.1
 xarray>=2025.10.1
 zarr>=3.1.5
