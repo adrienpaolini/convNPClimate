@@ -248,6 +248,10 @@ def load_high_res_topography(
     """
     Loads high-resolution topography data (DEM and TPI) from a Zarr file.
 
+    Note: the dataset we used mixed Zarr format 3 and Zarr format 2 and that
+    caused trouble. Renaming zarr.json to zarr.json.bak makes the dataset
+    fully loadable in format 2.
+
     Args:
         topography_path: Path to the Zarr directory containing topography data
         dem_var: Name of the DEM variable (default 'DEM')
