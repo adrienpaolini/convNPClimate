@@ -124,10 +124,17 @@ def train_elev(model,
           n_folds,
           n_epochs = 100,
           batch_size = 16,
+          patience = 10,
           stats_file = None,
           device = None):
     """
     Top level training loop for the model
+
+    Parameters:
+    -----------
+    patience : int
+        Number of epochs to wait for improvement before early stopping.
+        Set to None to disable early stopping.
     """
     if not stats_file:
         raise ValueError("Please provide a stats file to log training statistics to.")
@@ -135,9 +142,10 @@ def train_elev(model,
     test_score = []
 
     best_obj = 5
+    epochs_without_improvement = 0
 
     # Run the training loop.
-    print(f"Training using batch_size={batch_size}")
+    print(f"Training using batch_size={batch_size}, patience={patience}")
 
     with open(stats_file, 'a') as f:
         writer = csv.writer(f)
@@ -173,3 +181,11 @@ def train_elev(model,
                     'optimizer_state_dict': opt.state_dict(),
                     'loss': test_score}, os.path.join(output_dir, f"model_fold_{fold}"))
                 best_obj = test_obj
+                epochs_without_improvement = 0
+            else:
+                epochs_without_improvement += 1
+
+            # Early stopping check
+            if patience is not None and epochs_without_improvement >= patience:
+                print(f'Early stopping fold {fold} at epoch {epoch}: no improvement for {patience} epochs')
+                break
