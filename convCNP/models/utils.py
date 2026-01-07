@@ -1,16 +1,21 @@
 import torch
 
-def generate_context_mask(batch_size, n_channels, x, y):
+def generate_context_mask(batch_size, n_channels, x, y, device=None):
     """
-    Generate a context mask - in this simple case this will be one 
+    Generate a context mask - in this simple case this will be one
     for all grid points
     """
-    return torch.ones(batch_size, n_channels, x, y).cuda()
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return torch.ones(batch_size, n_channels, x, y, device=device)
 
-def get_dists(target_x, grid_x, grid_y):
+def get_dists(target_x, grid_x, grid_y, device=None):
     """
     Get the distances between the grid points and true points
     """
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     # dimensions
     x_dim, y_dim = grid_x.shape
 
@@ -25,7 +30,7 @@ def get_dists(target_x, grid_x, grid_y):
 
         count += 1
 
-    return total_grid.cuda()
+    return total_grid.to(device)
 
 def log_exp(x):
     """

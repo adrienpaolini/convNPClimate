@@ -27,7 +27,7 @@ class Params:
 
     # Training parameters
     N_EPOCHS: int = 30       # default in paper is 100
-    BATCH_SIZE: int = 16     # default in paper is 16    # TODO: wire this in
+    BATCH_SIZE: int = 16     # default in paper is 16
     LR: float = 5e-4         # default in paper is 5e-4
     PATIENCE: int = 10       # default in paper is 10    # TODO: wire this in
 
@@ -41,6 +41,8 @@ class Params:
     TRIAL_NAME: str = 'base-30-5folds'
 
     RUN_TYPE: Literal['local', 'cloud'] = 'local'
+
+    DEVICE: str = 'cpu'
 
 
 def save_params_json(params: Params, output_path: Path) -> None:

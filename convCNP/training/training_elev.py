@@ -9,7 +9,7 @@ import os
 import scipy
 from .utils import log_exp, generate_context_mask, get_fold_data
 
-def train_batch_elev(task, opt, model, ll, elev, dists):
+def train_batch_elev(task, opt, model, ll, elev, dists, device=None):
     """
     Train one batch
     Parameters:
@@ -19,15 +19,16 @@ def train_batch_elev(task, opt, model, ll, elev, dists):
     opt: Optimizer
     model: convCNP model
     ll: loss function
+    device: torch.device (optional)
     """
     batch_size, channels, x, y = task['y_context'].shape
 
     # Generate mask
-    mask = generate_context_mask(batch_size, channels, x, y)
+    mask = generate_context_mask(batch_size, channels, x, y, device=device)
 
-    # Forward pass  
+    # Forward pass
     v = model(task['y_context'], mask, dists, elev)
-    
+
     # Backprop
     obj = -ll(task['y_target'], v)
     obj.backward()
@@ -36,7 +37,7 @@ def train_batch_elev(task, opt, model, ll, elev, dists):
 
     return obj, opt, model
 
-def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value):
+def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, device=None):
     """
     Calculate nll on held out dataset after each epoch
     """
@@ -49,9 +50,9 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value):
     with torch.no_grad():
         for task in held_out:
             batch_size, channels, x, y = task['y_context'].shape
-            
+
             # Predict parameters for the batch
-            mask = generate_context_mask(batch_size, channels, x, y)
+            mask = generate_context_mask(batch_size, channels, x, y, device=device)
             predictions.append(model(task['y_context'], mask, dists, elev))
 
     # Calculate NLL
@@ -93,7 +94,7 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value):
     
     return eval_ll, median_mae, median_pearson, median_spearman
 
-def train_epoch_elev(model, opt, training_data, ll, elev, dists):
+def train_epoch_elev(model, opt, training_data, ll, elev, dists, device=None):
     """
     Outer training loop for each epoch
     """
@@ -103,14 +104,14 @@ def train_epoch_elev(model, opt, training_data, ll, elev, dists):
     batch_objs = []
     for task in training_data:
         # Generate a mask
-        obj, opt, model = train_batch_elev(task, opt, model, ll, elev, dists)
+        obj, opt, model = train_batch_elev(task, opt, model, ll, elev, dists, device=device)
         batch_objs.append(float(obj.item()))
     train_ll = np.mean(np.array(batch_objs)[-5:])
-    
+
     return train_ll
             
-def train_elev(model, 
-          opt, 
+def train_elev(model,
+          opt,
           ll,
           elev,
           dists,
@@ -118,23 +119,25 @@ def train_elev(model,
           y_target,
           output_dir,
           y_target_t,
-          get_value, 
+          get_value,
           fold,
           n_folds,
           n_epochs = 100,
-          stats_file = None):
+          batch_size = 16,
+          stats_file = None,
+          device = None):
     """
     Top level training loop for the model
     """
     if not stats_file:
         raise ValueError("Please provide a stats file to log training statistics to.")
-    
+
     test_score = []
 
     best_obj = 5
 
     # Run the training loop.
-    print("Training")
+    print(f"Training using batch_size={batch_size}")
 
     with open(stats_file, 'a') as f:
         writer = csv.writer(f)
@@ -144,20 +147,20 @@ def train_elev(model,
             if epoch>0:
                 del training_data
                 del held_out
-            
+
             n_samples = y_context.shape[0]
             fold_size = n_samples // n_folds
             start = fold * fold_size
             end = start + fold_size
             if fold == n_folds - 1:
                 end = n_samples
-            
-            training_data, held_out = get_fold_data((start, end), y_context, y_target)
+
+            training_data, held_out = get_fold_data((start, end), y_context, y_target, batch_size)
 
             # Compute training objective.
-            train_obj = train_epoch_elev(model, opt, training_data, ll, elev, dists)
+            train_obj = train_epoch_elev(model, opt, training_data, ll, elev, dists, device=device)
             test_obj, median_mae, median_pearson, median_spearman = eval_epoch_elev(
-                model, held_out, ll, elev, dists, y_target_t, get_value)
+                model, held_out, ll, elev, dists, y_target_t, get_value, device=device)
             test_score.append(test_obj)
             print('Epoch %s: train NLL %.3f, test NLL %.3f' % (epoch, train_obj, test_obj))
 

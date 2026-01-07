@@ -11,7 +11,7 @@ def shuffle_data(context, task):
     np.random.shuffle(inds)
     return context[inds], task[inds]
 
-def get_fold_data(inds, context, targets, shuffle = True):
+def get_fold_data(inds, context, targets, shuffle = True, batch_size=16):
     """
     Split the context and target data into folds
     """
@@ -33,10 +33,10 @@ def get_fold_data(inds, context, targets, shuffle = True):
         held_out_context, held_out_targets = shuffle_data(held_out_context, held_out_targets)
     
 
-    train_targets = torch.split(train_targets, 16)
-    train_context = torch.split(train_context, 16)
-    held_out_context = torch.split(held_out_context, 16)
-    held_out_targets = torch.split(held_out_targets, 16)
+    train_targets = torch.split(train_targets, batch_size)
+    train_context = torch.split(train_context, batch_size)
+    held_out_context = torch.split(held_out_context, batch_size)
+    held_out_targets = torch.split(held_out_targets, batch_size)
 
     training_data = [{"y_context":train_context[i], "y_target":train_targets[i]} 
         for i in range(len(train_targets))]
@@ -68,12 +68,14 @@ def log_exp(x):
         x[lt] = torch.log(1+torch.exp(x[lt]))
     return x
 
-def generate_context_mask(batch_size, n_channels, x, y):
+def generate_context_mask(batch_size, n_channels, x, y, device=None):
     """
-    Generate a context mask - in this simple case this will be one 
+    Generate a context mask - in this simple case this will be one
     for all grid points
     """
-    return torch.ones(batch_size, n_channels, x, y).cuda()
+    if device is None:
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    return torch.ones(batch_size, n_channels, x, y, device=device)
 
 def get_value_pr_gammagp(p):
     """
