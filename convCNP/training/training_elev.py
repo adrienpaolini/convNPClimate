@@ -72,6 +72,17 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, dev
         pred_mean = predictions[:, st].detach().cpu().numpy() #y_target_t.inverse_transform(predictions[:, st].view(-1, 1).detach().cpu())
         pred_mean = pred_mean[~np.isnan(true_mean)]
         true_mean = true_mean[~np.isnan(true_mean)]
+
+        # When the held-out set is shuffled, some target points may have all NaN values
+        # (common in observational climate data where not all stations report daily).
+        # With 0 valid samples, mean is undefined. With <2 valid samples, correlation is
+        # undefined - skip to avoid warnings.
+        if len(true_mean) < 2:
+            maes[st] = np.nan
+            pearsons[st] = np.nan
+            spearmans[st] = np.nan
+            continue
+
         try:
             maes[st] = np.mean(np.abs(true_mean - pred_mean))
             pearsons[st] = scipy.stats.pearsonr(pred_mean, true_mean)[0]
