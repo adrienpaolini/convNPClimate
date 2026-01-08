@@ -3,8 +3,10 @@ Training functions: models with MLP elevation
 """
 
 import csv
+import time
+from datetime import datetime
 import torch
-import numpy as np 
+import numpy as np
 import os
 import scipy
 from .utils import log_exp, generate_context_mask, get_fold_data
@@ -158,11 +160,16 @@ def train_elev(model,
     # Run the training loop.
     print(f"Training using batch_size={batch_size}, patience={patience}")
 
+    fold_start_time = time.time()
+    epoch_durations = []
+
     with open(stats_file, 'a') as f:
         writer = csv.writer(f)
 
         for epoch in range(n_epochs):
-            print("Starting epoch: {}".format(epoch))
+            epoch_start_time = time.time()
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"{timestamp}     Starting epoch: {epoch}")
             if epoch>0:
                 del training_data
                 del held_out
@@ -182,6 +189,27 @@ def train_elev(model,
                 model, held_out, ll, elev, dists, y_target_t, get_value, device=device)
             test_score.append(test_obj)
             print('Epoch %s: train NLL %.3f, test NLL %.3f' % (epoch, train_obj, test_obj))
+
+            # Timing statistics
+            epoch_end_time = time.time()
+            epoch_duration = epoch_end_time - epoch_start_time
+            epoch_durations.append(epoch_duration)
+            elapsed_in_fold = epoch_end_time - fold_start_time
+            avg_epoch_duration = np.mean(epoch_durations)
+            remaining_epochs = n_epochs - epoch - 1
+            estimated_remaining = avg_epoch_duration * remaining_epochs
+
+            def format_duration(seconds):
+                h, remainder = divmod(int(seconds), 3600)
+                m, s = divmod(remainder, 60)
+                if h > 0:
+                    return f"{h}h {m}m {s}s"
+                elif m > 0:
+                    return f"{m}m {s}s"
+                else:
+                    return f"{s}s"
+
+            print(f"Epoch took {format_duration(epoch_duration)} | Fold elapsed ({fold+1}/{n_folds}): {format_duration(elapsed_in_fold)} | Est. remaining: {format_duration(estimated_remaining)}")
 
             writer.writerow([fold, median_mae, median_pearson, median_spearman, epoch, train_obj, test_obj.item()])
             f.flush()
