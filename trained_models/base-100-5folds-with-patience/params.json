@@ -1,0 +1,18 @@
+{
+    "VARIABLE": "tmax",
+    "DATA_YEAR_START": 2023,
+    "N_CHANNELS": 128,
+    "N_BLOCKS": 6,
+    "KERNEL_SIZE": 5,
+    "LENGTH_SCALE": 0.1,
+    "IN_CHANNELS": 5,
+    "N_EPOCHS": 100,
+    "BATCH_SIZE": 16,
+    "LR": 0.0005,
+    "PATIENCE": 10,
+    "N_FOLDS": 5,
+    "SEED": 42,
+    "TRIAL_NAME": "base-100-5folds-with-patience",
+    "RUN_TYPE": "cloud",
+    "DEVICE": "cpu"
+}
