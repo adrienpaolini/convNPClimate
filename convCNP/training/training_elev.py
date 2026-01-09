@@ -9,6 +9,8 @@ import torch
 import numpy as np
 import os
 import scipy
+from scipy.stats import NearConstantInputWarning
+import warnings
 from .utils import log_exp, generate_context_mask, get_fold_data
 
 def train_batch_elev(task, opt, model, ll, elev, dists, device=None):
@@ -86,9 +88,11 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, dev
             continue
 
         try:
-            maes[st] = np.mean(np.abs(true_mean - pred_mean))
-            pearsons[st] = scipy.stats.pearsonr(pred_mean, true_mean)[0]
-            spearmans[st] = scipy.stats.spearmanr(pred_mean, true_mean).correlation
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", category=NearConstantInputWarning)
+                maes[st] = np.mean(np.abs(true_mean - pred_mean))
+                pearsons[st] = scipy.stats.pearsonr(pred_mean, true_mean)[0]
+                spearmans[st] = scipy.stats.spearmanr(pred_mean, true_mean).correlation
         except:
             maes[st] = np.nan
             pearsons[st] = np.nan
@@ -101,9 +105,6 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, dev
     median_mae = np.median(maes[~np.isnan(maes)])
     median_pearson = np.median(pearsons[~np.isnan(pearsons)])
     median_spearman = np.median(spearmans[~np.isnan(spearmans)])
-    print("Mean absolute error: {}".format(median_mae))
-    print("Pearson correlation: {}".format(median_pearson))
-    print("Spearman correlation: {}".format(median_spearman))
     
     return eval_ll, median_mae, median_pearson, median_spearman
 
@@ -163,13 +164,15 @@ def train_elev(model,
     fold_start_time = time.time()
     epoch_durations = []
 
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(fold_start_time))
+    print(f"{timestamp}   Fold {fold+1}/{n_folds}, elapsed 0s, est. remaining unknown")
+
+
     with open(stats_file, 'a') as f:
         writer = csv.writer(f)
 
         for epoch in range(n_epochs):
             epoch_start_time = time.time()
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            print(f"{timestamp}     Starting epoch: {epoch}")
             if epoch>0:
                 del training_data
                 del held_out
@@ -188,10 +191,10 @@ def train_elev(model,
             test_obj, median_mae, median_pearson, median_spearman = eval_epoch_elev(
                 model, held_out, ll, elev, dists, y_target_t, get_value, device=device)
             test_score.append(test_obj)
-            print('Epoch %s: train NLL %.3f, test NLL %.3f' % (epoch, train_obj, test_obj))
 
             # Timing statistics
             epoch_end_time = time.time()
+            timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(epoch_end_time))
             epoch_duration = epoch_end_time - epoch_start_time
             epoch_durations.append(epoch_duration)
             elapsed_in_fold = epoch_end_time - fold_start_time
@@ -209,7 +212,7 @@ def train_elev(model,
                 else:
                     return f"{s}s"
 
-            print(f"Epoch took {format_duration(epoch_duration)} | Fold elapsed ({fold+1}/{n_folds}): {format_duration(elapsed_in_fold)} | Est. remaining: {format_duration(estimated_remaining)}")
+            print(f"{timestamp}   Fold {fold+1}/{n_folds}, elapsed {format_duration(elapsed_in_fold)}, est. remaining {format_duration(estimated_remaining)} | Epoch {epoch} took {format_duration(epoch_duration)} | test NLL {test_obj:.3f} | train NLL {train_obj:.3f} | med MAE {median_mae:.3f} | med Pears {median_pearson:.3f} | med Spear {median_spearman:.3f}")
 
             writer.writerow([fold, median_mae, median_pearson, median_spearman, epoch, train_obj, test_obj.item()])
             f.flush()
