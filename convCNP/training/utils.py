@@ -101,6 +101,10 @@ def get_value_tmax(p):
     """
     return p[:, :, 0]
 
+def get_sigma_tmax(p):
+    """Return predicted sigma (standard deviation) for tmax model."""
+    return p[:, :, 1]
+
 def tbi_func(x, v):
     """
     Evaluate Bernoulli-gamma-GP mixture likelihood
