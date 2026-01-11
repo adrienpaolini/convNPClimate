@@ -9,6 +9,7 @@ kaleido>=1.2.0
 matplotlib>=3.7.5
 pandas>=2.3.2
 plotly>=6.5.0
+properscoring>=0.1
 scikit-learn>=1.7.1
 scipy>=1.16.1
 seaborn>=0.13.2
