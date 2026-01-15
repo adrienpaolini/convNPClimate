@@ -81,7 +81,7 @@ def load_era5_data(
     geopotential_glob: Path | str | None = None,
     geopotential_var_name: str = 'z',
     device: torch.device | None = None,
-) -> Tuple[torch.Tensor, Era5Metadata, torch.Tensor | None]:
+) -> Tuple[torch.Tensor, Era5Metadata, torch.Tensor | None, np.ndarray]:
     """
     Loads ERA5 data from NetCDF files matching the given glob pattern.
     Optionally filters data starting from a specific year.
@@ -99,6 +99,7 @@ def load_era5_data(
         tensor: Processed input tensor with shape (time, channels, lat, lon)
         stats: Era5Metadata containing normalization parameters and grid coordinates
         altitude: Tensor with altitude in meters, shape (lat, lon), or None if geopotential_glob not provided
+        time_coords: Array of datetime64 values corresponding to each time index
     """
     if device is None:
         device = torch.device('cpu')
@@ -172,6 +173,10 @@ def load_era5_data(
 
     # Order matches: [Data, Lat, Lon, CosTime, SinTime]
     tensor_Z = tensor_Z.transpose('time', 'channel', 'latitude', 'longitude')
+
+    # Extract time coordinates before converting to tensor
+    time_coords = ds.time.values
+
     # Use float32 consistently - the model and mask generation use float32
     tensor_Z = torch.from_numpy(tensor_Z.values.astype(np.float32)).to(device)
     print(f"Final tensor_Z torch tensor with shape (time, channel, lat, lon): {tensor_Z.shape}, dtype: {tensor_Z.dtype}")
@@ -236,7 +241,7 @@ def load_era5_data(
         # altitude_tensor = torch.from_numpy(altitude.values.astype(np.float32)).to(device)
         # print(f"Altitude tensor shape: {altitude_tensor.shape}, dtype: {altitude_tensor.dtype}")
 
-    return tensor_Z, stats, altitude
+    return tensor_Z, stats, altitude, time_coords
 
 
 # Load high-resolution topography data
