@@ -3,45 +3,101 @@ import numpy as np
 from torch.distributions.gamma import Gamma
 from torch.distributions.normal import Normal
 
-def shuffle_data(context, task):
+def shuffle_data(context, task, seasonal=None):
     """
-    Shuffle data before each epoch
-    """
-    inds = np.linspace(0, context.shape[0]-1, context.shape[0])
-    np.random.shuffle(inds)
-    return context[inds], task[inds]
+    Shuffle data before each epoch.
 
-def get_fold_data(inds, context, targets, shuffle = True, batch_size=16):
+    Parameters:
+    -----------
+    context: input context tensor (time, ...)
+    task: target tensor (time, ...)
+    seasonal: optional seasonal features tensor (time, 2)
+
+    Returns:
+    --------
+    Shuffled tensors in the same order
     """
-    Split the context and target data into folds
+    inds = np.linspace(0, context.shape[0]-1, context.shape[0], dtype=int)
+    np.random.shuffle(inds)
+    if seasonal is not None:
+        return context[inds], task[inds], seasonal[inds]
+    return context[inds], task[inds], None
+
+
+def get_fold_data(inds, context, targets, shuffle=True, batch_size=16, seasonal=None):
+    """
+    Split the context and target data into folds.
+
+    Parameters:
+    -----------
+    inds: tuple of (start, end) indices for held-out fold
+    context: input context tensor (time, channels, lat, lon)
+    targets: target tensor (time, n_points)
+    shuffle: whether to shuffle data
+    batch_size: batch size for splitting
+    seasonal: optional seasonal features tensor (time, 2)
+
+    Returns:
+    --------
+    training_data: list of task dicts with 'y_context', 'y_target', and optionally 'seasonal'
+    held_out: list of task dicts for validation
     """
     # Get held out
     held_out_context = context[inds[0]:inds[1], ...]
     held_out_targets = targets[inds[0]:inds[1], :]
+    held_out_seasonal = seasonal[inds[0]:inds[1], :] if seasonal is not None else None
 
     # Get training
     train_context = torch.cat(
-        [context[0:inds[0],...], context[inds[1]:,...]]
+        [context[0:inds[0], ...], context[inds[1]:, ...]]
     )
     train_targets = torch.cat(
-        [targets[0:inds[0],...], targets[inds[1]:,...]]
+        [targets[0:inds[0], ...], targets[inds[1]:, ...]]
     )
+    train_seasonal = None
+    if seasonal is not None:
+        train_seasonal = torch.cat(
+            [seasonal[0:inds[0], ...], seasonal[inds[1]:, ...]]
+        )
 
     # Shuffle data
-    if shuffle: 
-        train_context, train_targets = shuffle_data(train_context, train_targets)
-        held_out_context, held_out_targets = shuffle_data(held_out_context, held_out_targets)
-    
+    if shuffle:
+        train_context, train_targets, train_seasonal = shuffle_data(
+            train_context, train_targets, train_seasonal
+        )
+        held_out_context, held_out_targets, held_out_seasonal = shuffle_data(
+            held_out_context, held_out_targets, held_out_seasonal
+        )
 
     train_targets = torch.split(train_targets, batch_size)
     train_context = torch.split(train_context, batch_size)
     held_out_context = torch.split(held_out_context, batch_size)
     held_out_targets = torch.split(held_out_targets, batch_size)
 
-    training_data = [{"y_context":train_context[i], "y_target":train_targets[i]} 
-        for i in range(len(train_targets))]
-    held_out = [{"y_context":held_out_context[i], "y_target":held_out_targets[i]} 
-        for i in range(len(held_out_targets))]
+    # Split seasonal if provided
+    if train_seasonal is not None:
+        train_seasonal = torch.split(train_seasonal, batch_size)
+        held_out_seasonal = torch.split(held_out_seasonal, batch_size)
+
+    # Build task dicts
+    if train_seasonal is not None:
+        training_data = [
+            {"y_context": train_context[i], "y_target": train_targets[i], "seasonal": train_seasonal[i]}
+            for i in range(len(train_targets))
+        ]
+        held_out = [
+            {"y_context": held_out_context[i], "y_target": held_out_targets[i], "seasonal": held_out_seasonal[i]}
+            for i in range(len(held_out_targets))
+        ]
+    else:
+        training_data = [
+            {"y_context": train_context[i], "y_target": train_targets[i]}
+            for i in range(len(train_targets))
+        ]
+        held_out = [
+            {"y_context": held_out_context[i], "y_target": held_out_targets[i]}
+            for i in range(len(held_out_targets))
+        ]
 
     return training_data, held_out
 

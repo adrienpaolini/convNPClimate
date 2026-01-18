@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Tuple
 
 import numpy as np
+import pandas as pd
 import pyproj
 import torch
 import xarray as xr
@@ -520,3 +521,43 @@ def get_meteoswiss_grid_shape(meteo_swiss_glob: str) -> Tuple[int, int]:
     """
     ds = xr.open_mfdataset(meteo_swiss_glob, combine='by_coords', data_vars='all')
     return ds.sizes['N'], ds.sizes['E']
+
+
+def compute_seasonal_features(
+    time_coords: np.ndarray,
+    device: torch.device | None = None,
+) -> torch.Tensor:
+    """
+    Compute seasonal features (cos/sin of day-of-year) from time coordinates.
+
+    The seasonal encoding allows the elevation MLP to learn season-dependent
+    corrections, e.g., different lapse rates in winter (inversions) vs summer.
+
+    Args:
+        time_coords: Array of datetime64 values (from load_era5_data)
+        device: Torch device to load tensor to (defaults to CPU)
+
+    Returns:
+        Tensor of shape (n_times, 2) with [cos(day_of_year), sin(day_of_year)]
+    """
+    if device is None:
+        device = torch.device('cpu')
+
+    # Convert datetime64 to day of year
+    times_pd = pd.to_datetime(time_coords)
+    day_of_year = times_pd.dayofyear.values  # 1-366
+
+    # Convert to radians (0 to 2*pi over the year)
+    time_rads = (day_of_year - 1) / 365.0 * 2 * np.pi
+
+    # Compute cos and sin encoding
+    cos_doy = np.cos(time_rads)
+    sin_doy = np.sin(time_rads)
+
+    # Stack into (n_times, 2) tensor
+    seasonal = np.stack([cos_doy, sin_doy], axis=1)
+    seasonal_tensor = torch.from_numpy(seasonal.astype(np.float32)).to(device)
+
+    print(f"Computed seasonal features: {seasonal_tensor.shape}, dtype: {seasonal_tensor.dtype}")
+
+    return seasonal_tensor

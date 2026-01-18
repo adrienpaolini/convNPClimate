@@ -13,16 +13,19 @@ from scipy.stats import NearConstantInputWarning
 import warnings
 from .utils import log_exp, generate_context_mask, get_fold_data
 
-def train_batch_elev(task, opt, model, ll, elev, dists, device=None):
+def train_batch_elev(task, opt, model, ll, elev, dists, seasonal=None, device=None):
     """
     Train one batch
     Parameters:
     -----------
     task: dict
-        ['y_context', 'y_target']
+        ['y_context', 'y_target', 'seasonal' (optional)]
     opt: Optimizer
     model: convCNP model
     ll: loss function
+    elev: elevation features tensor
+    dists: distances tensor
+    seasonal: seasonal features for this batch (batch, 2) or None
     device: torch.device (optional)
     """
     batch_size, channels, x, y = task['y_context'].shape
@@ -30,8 +33,11 @@ def train_batch_elev(task, opt, model, ll, elev, dists, device=None):
     # Generate mask
     mask = generate_context_mask(batch_size, channels, x, y, device=device)
 
+    # Get seasonal features from task if available, otherwise use passed argument
+    batch_seasonal = task.get('seasonal', seasonal)
+
     # Forward pass
-    v = model(task['y_context'], mask, dists, elev)
+    v = model(task['y_context'], mask, dists, elev, seasonal=batch_seasonal)
 
     # Backprop
     obj = -ll(task['y_target'], v)
@@ -43,12 +49,23 @@ def train_batch_elev(task, opt, model, ll, elev, dists, device=None):
 
 def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, device=None):
     """
-    Calculate nll on held out dataset after each epoch
+    Calculate nll on held out dataset after each epoch.
+
+    Parameters:
+    -----------
+    model: convCNP model
+    held_out: list of task dicts with 'y_context', 'y_target', and optionally 'seasonal'
+    ll: loss function
+    elev: elevation features tensor (n_points, 3)
+    dists: distances tensor
+    y_target_t: target transformer (unused, kept for API compatibility)
+    get_value: function to extract predictions from model output
+    device: torch.device (optional)
     """
     model.eval()
 
     targets = [i['y_target'] for i in held_out]
-    targets_complete = torch.cat(targets, axis = 0)
+    targets_complete = torch.cat(targets, axis=0)
 
     predictions = []
     with torch.no_grad():
@@ -57,7 +74,11 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, dev
 
             # Predict parameters for the batch
             mask = generate_context_mask(batch_size, channels, x, y, device=device)
-            predictions.append(model(task['y_context'], mask, dists, elev))
+
+            # Get seasonal features from task if available
+            batch_seasonal = task.get('seasonal', None)
+
+            predictions.append(model(task['y_context'], mask, dists, elev, seasonal=batch_seasonal))
 
     # Calculate NLL
     predictions = torch.cat(predictions)
@@ -110,7 +131,17 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, dev
 
 def train_epoch_elev(model, opt, training_data, ll, elev, dists, device=None):
     """
-    Outer training loop for each epoch
+    Outer training loop for each epoch.
+
+    Parameters:
+    -----------
+    model: convCNP model
+    opt: Optimizer
+    training_data: list of task dicts with 'y_context', 'y_target', and optionally 'seasonal'
+    ll: loss function
+    elev: elevation features tensor (n_points, 3)
+    dists: distances tensor
+    device: torch.device (optional)
     """
     model.train()
 
@@ -136,19 +167,35 @@ def train_elev(model,
           get_value,
           fold,
           n_folds,
-          n_epochs = 100,
-          batch_size = 16,
-          patience = 10,
-          stats_file = None,
-          device = None):
+          n_epochs=100,
+          batch_size=16,
+          patience=10,
+          stats_file=None,
+          seasonal=None,
+          device=None):
     """
-    Top level training loop for the model
+    Top level training loop for the model.
 
     Parameters:
     -----------
-    patience : int
-        Number of epochs to wait for improvement before early stopping.
-        Set to None to disable early stopping.
+    model: convCNP model
+    opt: Optimizer
+    ll: loss function
+    elev: elevation features tensor (n_points, 3)
+    dists: distances tensor
+    y_context: input context tensor (time, channels, lat, lon)
+    y_target: target tensor (time, n_points)
+    output_dir: directory to save model checkpoints
+    y_target_t: target transformer (unused, kept for API compatibility)
+    get_value: function to extract predictions from model output
+    fold: current fold index
+    n_folds: total number of folds
+    n_epochs: maximum number of epochs
+    batch_size: batch size
+    patience: number of epochs to wait for improvement before early stopping (None to disable)
+    stats_file: path to CSV file for logging training statistics
+    seasonal: optional seasonal features tensor (time, 2) with [cos_doy, sin_doy]
+    device: torch.device (optional)
     """
     if not stats_file:
         raise ValueError("Please provide a stats file to log training statistics to.")
@@ -173,7 +220,7 @@ def train_elev(model,
 
         for epoch in range(n_epochs):
             epoch_start_time = time.time()
-            if epoch>0:
+            if epoch > 0:
                 del training_data
                 del held_out
 
@@ -184,7 +231,9 @@ def train_elev(model,
             if fold == n_folds - 1:
                 end = n_samples
 
-            training_data, held_out = get_fold_data((start, end), y_context, y_target, batch_size)
+            training_data, held_out = get_fold_data(
+                (start, end), y_context, y_target, batch_size=batch_size, seasonal=seasonal
+            )
 
             # Compute training objective.
             train_obj = train_epoch_elev(model, opt, training_data, ll, elev, dists, device=device)
