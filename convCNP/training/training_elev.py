@@ -13,6 +13,50 @@ from scipy.stats import NearConstantInputWarning
 import warnings
 from .utils import log_exp, generate_context_mask, get_fold_data
 
+
+def get_fold_holdout_indices(fold: int, n_folds: int, n_samples: int) -> tuple:
+    """
+    Get the start and end indices for a fold's holdout period.
+
+    Parameters:
+    -----------
+    fold: current fold index (0-based)
+    n_folds: total number of folds
+    n_samples: total number of time samples
+
+    Returns:
+    --------
+    (start, end) tuple of indices defining the holdout slice [start, end)
+    """
+    fold_size = n_samples // n_folds
+    start = fold * fold_size
+    end = start + fold_size
+    if fold == n_folds - 1:
+        end = n_samples
+    return start, end
+
+
+def select_holdout_day(fold: int, holdout_start: int, holdout_end: int, seed: int = 42) -> int:
+    """
+    Deterministically select one day from the holdout period.
+    Uses the middle day of the holdout period for consistency.
+
+    Parameters:
+    -----------
+    fold: current fold index (unused, kept for future seeded strategies)
+    holdout_start: start index of the holdout period
+    holdout_end: end index of the holdout period (exclusive)
+    seed: random seed (unused, kept for future seeded strategies)
+
+    Returns:
+    --------
+    Index of the selected day
+    """
+    holdout_length = holdout_end - holdout_start
+    day_offset = holdout_length // 2
+    return holdout_start + day_offset
+
+
 def train_batch_elev(task, opt, model, ll, elev, dists, seasonal=None, device=None):
     """
     Train one batch
@@ -225,11 +269,7 @@ def train_elev(model,
                 del held_out
 
             n_samples = y_context.shape[0]
-            fold_size = n_samples // n_folds
-            start = fold * fold_size
-            end = start + fold_size
-            if fold == n_folds - 1:
-                end = n_samples
+            start, end = get_fold_holdout_indices(fold, n_folds, n_samples)
 
             training_data, held_out = get_fold_data(
                 (start, end), y_context, y_target, batch_size=batch_size, seasonal=seasonal
