@@ -45,6 +45,12 @@ class Params:
 
     DEVICE: str = 'cpu'
 
+    # Data paths (saved during training for reproducibility)
+    ERA5_MAX_TEMP_GLOB: str | None = None
+    ERA5_GEOPOTENTIAL_GLOB: str | None = None
+    METEO_SWISS_MAX_TEMP_GLOB: str | None = None
+    HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
+
 
 def save_params_json(params: Params, output_path: Path) -> None:
     """Save Params dataclass as JSON to specified path."""
