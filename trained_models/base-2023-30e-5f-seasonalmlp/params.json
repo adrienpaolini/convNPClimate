@@ -5,7 +5,7 @@
     "N_BLOCKS": 6,
     "KERNEL_SIZE": 5,
     "LENGTH_SCALE": 0.1,
-    "IN_CHANNELS": 0,
+    "IN_CHANNELS": 5,
     "SEASONAL_FEATURES_IN_MLP": true,
     "N_EPOCHS": 30,
     "BATCH_SIZE": 16,
