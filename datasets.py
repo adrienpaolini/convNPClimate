@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pyproj
 import torch
+import torch.nn.functional as F
 import xarray as xr
 
 from json_utils import save_dataclass_json, load_dataclass_json
@@ -561,3 +562,69 @@ def compute_seasonal_features(
     print(f"Computed seasonal features: {seasonal_tensor.shape}, dtype: {seasonal_tensor.dtype}")
 
     return seasonal_tensor
+
+
+def interpolate_era5_to_targets(
+    y_context: torch.Tensor,
+    target_coords: xr.DataArray,
+    metadata: Era5Metadata,
+) -> torch.Tensor:
+    """
+    Bilinearly interpolate ERA5 temperature (channel 0) to target point locations.
+
+    This provides the reference (baseline) predictions for skill score calculation:
+    the best you could do by simply reading off the coarse ERA5 grid at each station.
+
+    Args:
+        y_context: ERA5 input tensor of shape (time, channels, lat, lon).
+                   Channel 0 is the normalized temperature field.
+        target_coords: xarray.DataArray of shape (point, coord) with normalized
+                       [lat, lon] coordinates in [0, 1] (from prepare_meteoswiss_targets).
+        metadata: Era5Metadata with lat_coords to determine grid orientation.
+
+    Returns:
+        Tensor of shape (time, n_points) with interpolated normalized temperatures.
+    """
+    n_time = y_context.shape[0]
+    temp_field = y_context[:, 0:1, :, :]  # (time, 1, lat, lon)
+
+    # Extract normalized target coordinates
+    lat_norm = torch.from_numpy(
+        target_coords.sel(coord='lat').values.astype(np.float32)
+    )
+    lon_norm = torch.from_numpy(
+        target_coords.sel(coord='lon').values.astype(np.float32)
+    )
+
+    # Convert [0, 1] normalized coords to grid_sample's [-1, 1] range.
+    # grid_sample convention: -1 maps to index 0, +1 maps to last index.
+    # Longitude (W dimension): lon increases with index, so grid_x = 2*lon_norm - 1
+    grid_x = 2.0 * lon_norm - 1.0
+
+    # Latitude (H dimension): check ordering of the ERA5 grid.
+    # If lat_coords is descending (north-to-south), index 0 = lat_max (norm=1),
+    # so grid_y = -(2*lat_norm - 1) = 1 - 2*lat_norm.
+    # If ascending (south-to-north), index 0 = lat_min (norm=0),
+    # so grid_y = 2*lat_norm - 1.
+    lat_descending = metadata.lat_coords[0] > metadata.lat_coords[-1]
+    if lat_descending:
+        grid_y = 1.0 - 2.0 * lat_norm
+    else:
+        grid_y = 2.0 * lat_norm - 1.0
+
+    # grid_sample expects grid of shape (N, H_out, W_out, 2) with (x, y) ordering.
+    # For point sampling: H_out=1, W_out=n_points
+    n_points = len(lat_norm)
+    grid = torch.stack([grid_x, grid_y], dim=-1)  # (n_points, 2)
+    grid = grid.unsqueeze(0).unsqueeze(0)  # (1, 1, n_points, 2)
+    grid = grid.expand(n_time, -1, -1, -1)  # (time, 1, n_points, 2)
+
+    # Move to same device as input
+    grid = grid.to(temp_field.device)
+
+    # Bilinear interpolation
+    interpolated = F.grid_sample(
+        temp_field, grid, mode='bilinear', padding_mode='border', align_corners=True
+    )
+    # interpolated shape: (time, 1, 1, n_points) -> squeeze to (time, n_points)
+    return interpolated.squeeze(1).squeeze(1)
