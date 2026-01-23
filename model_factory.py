@@ -1,0 +1,79 @@
+"""
+Shared model construction logic for convCNP climate models.
+
+This module provides a single source of truth for building the model architecture,
+used by both training and prediction notebooks.
+"""
+
+from typing import Callable
+
+import torch.nn as nn
+
+from params import Params
+from convCNP.models.elev_models import TmaxBiasConvCNPElev, GammaBiasConvCNPElev
+from convCNP.models.cnn import CNN, ResConvBlock
+from convCNP.training.loss_functions import gll, gamma_ll
+from convCNP.training.utils import get_value_tmax
+
+
+LossFn = Callable
+GetValueFn = Callable
+
+
+def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
+    """
+    Build convCNP model based on variable type.
+
+    Args:
+        params: Training/model configuration parameters.
+
+    Returns:
+        model: The constructed nn.Module (not yet moved to device).
+        loss_fn: The loss function for training.
+        get_value_fn: Function to extract point predictions from model output.
+    """
+    # Build CNN decoder (same architecture for both variables)
+    decoder = CNN(
+        n_channels=params.N_CHANNELS,
+        ConvBlock=ResConvBlock,
+        n_blocks=params.N_BLOCKS,
+        Conv=nn.Conv2d,
+        Normalization=nn.Identity,
+        kernel_size=params.KERNEL_SIZE,
+    )
+
+    # Build model based on variable
+    if params.VARIABLE == "tmax":
+        model = TmaxBiasConvCNPElev(
+            decoder=decoder,
+            in_channels=params.IN_CHANNELS,
+            ls=params.LENGTH_SCALE,
+            use_seasonal=params.SEASONAL_FEATURES_IN_MLP,
+        )
+        loss_fn = gll
+        get_value_fn = get_value_tmax
+
+    elif params.VARIABLE == "precip":
+        model = GammaBiasConvCNPElev(
+            decoder=decoder,
+            in_channels=params.IN_CHANNELS,
+            ls=params.LENGTH_SCALE,
+            use_seasonal=params.SEASONAL_FEATURES_IN_MLP,
+        )
+        loss_fn = gamma_ll
+
+        def get_value_precip(p):
+            """Extract mean prediction for precipitation (Gamma distribution)."""
+            mean = p[:, :, 1] / p[:, :, 2]  # alpha / beta
+            mean[p[:, :, 0] <= 0.5] = 0  # Set to 0 when dry
+            return mean
+
+        get_value_fn = get_value_precip
+
+    else:
+        raise ValueError(f"Unknown variable: {params.VARIABLE}")
+
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Built {type(model).__name__} with {n_params:,} trainable parameters")
+
+    return model, loss_fn, get_value_fn
