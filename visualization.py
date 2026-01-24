@@ -49,7 +49,7 @@ def plot_prediction_comparison(
     # Upsample ERA5 to MeteoSwiss resolution and apply same mask
     era5_lat, era5_lon = era5_shape
     zoom_factors = (N / era5_lat, E / era5_lon)
-    era5_upsampled = zoom(era5_input, zoom_factors, order=0)  # bilinear interpolation
+    era5_upsampled = zoom(era5_input, zoom_factors, order=0)  # nearest neighbour interpolation
     # ERA5 NetCDF files store latitude in decreasing order (north to south), so the first row
     # era5_data[day_idx, 0][0, :] is the northern edge. When we use origin='lower' with imshow,
     # row 0 is placed at the bottom, putting north at the bottom instead of the top. We could
