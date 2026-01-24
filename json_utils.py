@@ -38,7 +38,7 @@ def save_dataclass_json(obj: T, output_path: Path, numpy_fields: list[str] | Non
             if hasattr(obj_copy, field):
                 value = getattr(obj_copy, field)
                 if isinstance(value, np.ndarray):
-                    setattr(obj_copy, field, value.tolist())
+                    setattr(obj_copy, field, {"values": value.tolist(), "dtype": str(value.dtype)})
 
     with open(output_path, 'w') as f:
         json.dump(asdict(obj_copy), f, indent=4, cls=_TorchDeviceEncoder)
@@ -66,6 +66,10 @@ def load_dataclass_json(
     if numpy_fields:
         for field in numpy_fields:
             if field in data and data[field] is not None:
-                data[field] = np.array(data[field])
+                value = data[field]
+                if isinstance(value, dict) and "values" in value and "dtype" in value:
+                    data[field] = np.array(value["values"], dtype=np.dtype(value["dtype"]))
+                else:
+                    data[field] = np.array(value)
 
     return cls(**data)
