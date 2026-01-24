@@ -2,9 +2,6 @@
 
 ## Sources
 
-* EOBS: 
-  https://www.ecad.eu/download/ensembles/download.php
-
 * ERA5-Land: 
   https://confluence.ecmwf.int/display/CKB/ERA5-Land%3A+data+documentation
 
@@ -18,15 +15,6 @@
 Download and store them in the following folder structure:
 
 - datasets
-  - EOBS [not currently used in project]
-    - max_temperature
-      - t_max_day_EOBS_v30_CH_1971-2024.nc
-    - min_temperature
-      - t_min_day_EOBS_v30_CH_1971-2024.nc
-    - precipitation
-      - pr_day_EOBS_v30_CH_1971-2024.nc
-    - temperature
-      - tas_day_EOBS_v30_CH_1971-2024.nc
   - ERA5_Land
     - max_temperature
       - t2m_max-1960.nc
@@ -71,6 +59,23 @@ Download and store them in the following folder structure:
       - TminD_ch01r.swiss.lv95_197201010000_197212310000.nc
       - ...
       - TminD_ch01r.swiss.lv95_202301010000_202312310000.nc
+  - topo_subset.zarr (all subfolders with content in zarray format 2)
+    - DEM
+    - EASTING
+    - latitude
+    - longitude
+    - NORTHING
+    - SN_DERIVATIVE_2000M_SIGRATIO1
+    - SN_DERIVATIVE_500M_SIGRATIO1
+    - TPI_2000M
+    - TPI_500M
+    - VALLEY_NORM_2000M_SMTHFACT0.5
+    - WE_DERIVATIVE_2000M_SIGRATIO1
+    - WE_DERIVATIVE_500M_SIGRATIO1
+    - x
+    - y
+    - zarr.json
+    (Note: this dataset mixes Zarr format 3 and Zarr format 2 and that causes trouble. Renaming zarr.json to zarr.json.bak makes the dataset fully loadable in format 2.)
 
 
 ## Dependencies
@@ -84,12 +89,14 @@ pip install xarray h5netcdf
 
 ## Loading
 
-Load the data like this:
+Directly load the data like this:
 
 ```
 import xarray as xr
 
-eobs_temp2m = xr.open_dataset("datasets/EOBS/temperature/tas_day_EOBS_v30_CH_1971-2024.nc")
 era5_temp2m = xr.open_dataset("datasets/ERA5_Land/temperature/t2m-1960.nc")
 mch_temp2m = xr.open_dataset("datasets/MeteoSwiss/TabsD_v2.0_swiss.lv95/TabsD_ch01r.swiss.lv95_196101010000_196112310000.nc")
+topo_ds = xr.open_zarr("datasets/topo_subset.zarr")
 ```
+
+datasets.py contains tooling for loading and processing the datasets as well.
