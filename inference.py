@@ -149,8 +149,8 @@ def predict_holdout_fold(
         day_sigmas_np = day_sigmas.cpu().numpy()
         day_truth = target_y[day_idx].cpu().numpy()
 
-        day_preds_denorm = metadata.denormalize(day_preds_np) - 273.15
-        day_truth_denorm = metadata.denormalize(day_truth) - 273.15
+        day_preds_denorm = metadata.denormalize(day_preds_np) - ds.KELVIN_OFFSET
+        day_truth_denorm = metadata.denormalize(day_truth) - ds.KELVIN_OFFSET
 
         fold_errors.append(day_preds_denorm - day_truth_denorm)
         fold_preds.append(day_preds_denorm)

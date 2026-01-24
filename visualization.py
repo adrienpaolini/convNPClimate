@@ -64,9 +64,9 @@ def plot_prediction_comparison(
         pred_grid = metadata.denormalize(pred_grid)
         era5_upsampled = metadata.denormalize(era5_upsampled)
         # Convert Kelvin to Celsius
-        truth_grid = truth_grid - 273.15
-        pred_grid = pred_grid - 273.15
-        era5_upsampled = era5_upsampled - 273.15
+        truth_grid = truth_grid - ds.KELVIN_OFFSET
+        pred_grid = pred_grid - ds.KELVIN_OFFSET
+        era5_upsampled = era5_upsampled - ds.KELVIN_OFFSET
         unit = '°C'
     else:
         unit = 'normalized'
@@ -306,8 +306,8 @@ def plot_single_day_uncertainty(
     """
     N, E = grid_shape
 
-    pred_denorm = metadata.denormalize(predictions) - 273.15
-    truth_denorm = metadata.denormalize(truth) - 273.15
+    pred_denorm = metadata.denormalize(predictions) - ds.KELVIN_OFFSET
+    truth_denorm = metadata.denormalize(truth) - ds.KELVIN_OFFSET
 
     abs_error = np.abs(pred_denorm - truth_denorm)
 

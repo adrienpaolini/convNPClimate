@@ -17,6 +17,8 @@ from json_utils import save_dataclass_json, load_dataclass_json
 from convCNP.validation.utils import get_dists
 
 
+KELVIN_OFFSET = 273.15
+
 # Coordinate transformers for Swiss LV95 (EPSG:2056) <-> WGS84 (EPSG:4326)
 _WGS84_TO_LV95 = pyproj.Transformer.from_crs("EPSG:4326", "EPSG:2056", always_xy=True)
 _LV95_TO_WGS84 = pyproj.Transformer.from_crs("EPSG:2056", "EPSG:4326", always_xy=True)
@@ -428,8 +430,8 @@ def prepare_meteoswiss_targets(
 
     # --- UNIT CONVERSION CHECK ---
     if convert_to_kelvin:
-        print("  -> Converting Celsius to Kelvin (+273.15) before normalization")
-        data_flat = data_flat + 273.15
+        print(f"  -> Converting Celsius to Kelvin (+{KELVIN_OFFSET}) before normalization")
+        data_flat = data_flat + KELVIN_OFFSET
 
     # Normalize using stats (Z-Score)
     # Truth = (Temp - Input_Mean) / Input_Std
