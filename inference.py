@@ -49,7 +49,9 @@ def load_model_checkpoint(
     # Handle potential 'module.' prefix from DataParallel
     state_dict = checkpoint['model_state_dict']
     if list(state_dict.keys())[0].startswith('module.'):
-        state_dict = OrderedDict([(k[7:], v) for k, v in state_dict.items()])
+        state_dict = OrderedDict([
+            (k.removeprefix('module.'), v) for k, v in state_dict.items()
+        ])
 
     model.load_state_dict(state_dict)
     model.eval()
