@@ -106,6 +106,7 @@ def predict_single_day(
 
     return predictions.squeeze(0), sigma.squeeze(0)
 
+
 def predict_holdout_fold(
     model: nn.Module,
     context: torch.Tensor,

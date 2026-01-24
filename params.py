@@ -65,12 +65,19 @@ class Params:
         if isinstance(self.DEVICE, str):
             self.DEVICE = torch.device(self.DEVICE)
 
-    def populate_from(self, data_paths) -> None:
-        """Populate data path fields from a DataPaths instance."""
-        self.ERA5_MAX_TEMP_GLOB = data_paths.ERA5_MAX_TEMP_GLOB
-        self.ERA5_GEOPOTENTIAL_GLOB = data_paths.ERA5_GEOPOTENTIAL_GLOB
-        self.METEO_SWISS_MAX_TEMP_GLOB = data_paths.METEO_SWISS_MAX_TEMP_GLOB
-        self.HI_RES_TOPOGRAPHY_ZARR_PATH = data_paths.HI_RES_TOPOGRAPHY_ZARR_PATH
+    def with_in_channels(self, in_channels: int) -> 'Params':
+        """Return a new Params instance with IN_CHANNELS set."""
+        return dataclasses.replace(self, IN_CHANNELS=in_channels)
+
+    def with_data_paths(self, data_paths) -> 'Params':
+        """Return a new Params instance with data paths populated."""
+        return dataclasses.replace(
+            self,
+            ERA5_MAX_TEMP_GLOB=data_paths.ERA5_MAX_TEMP_GLOB,
+            ERA5_GEOPOTENTIAL_GLOB=data_paths.ERA5_GEOPOTENTIAL_GLOB,
+            METEO_SWISS_MAX_TEMP_GLOB=data_paths.METEO_SWISS_MAX_TEMP_GLOB,
+            HI_RES_TOPOGRAPHY_ZARR_PATH=data_paths.HI_RES_TOPOGRAPHY_ZARR_PATH,
+        )
 
     def save_json(self, output_path: Path) -> None:
         """Save this Params instance as JSON to specified path."""
