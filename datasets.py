@@ -179,11 +179,17 @@ def load_era5_data(
         lat_coords=lat_coords,
         lon_coords=lon_coords,
     )
+    lat_range = lat_max - lat_min
+    lon_range = lon_max - lon_min
+    if std_val == 0:
+        raise ValueError(f"ERA5 variable '{var_name}' has zero standard deviation (constant field); cannot normalize.")
+    if lat_range == 0 or lon_range == 0:
+        raise ValueError(f"ERA5 coordinate range is zero (lat_range={lat_range}, lon_range={lon_range}); cannot normalize.")
     norm_data = (ds[var_name] - mean_val) / std_val
 
     # Normalize coordinates
-    lat_norm = (ds.latitude - lat_min) / (lat_max - lat_min)
-    lon_norm = (ds.longitude - lon_min) / (lon_max - lon_min)
+    lat_norm = (ds.latitude - lat_min) / lat_range
+    lon_norm = (ds.longitude - lon_min) / lon_range
     # Xarray broadcast automatically expands (lat) and (lon) to (time, lat, lon)
     # dependent on the shape of `norm_data`.
     lat_channel, lon_channel, _ = xr.broadcast(lat_norm, lon_norm, norm_data)
@@ -403,8 +409,12 @@ def prepare_meteoswiss_targets(
     print(f"=== END COORDINATE VERIFICATION ===\n")
 
     # Normalize using input boundaries
-    lat_norm = (lat_flat - normalization_stats.lat_min) / (normalization_stats.lat_max - normalization_stats.lat_min)
-    lon_norm = (lon_flat - normalization_stats.lon_min) / (normalization_stats.lon_max - normalization_stats.lon_min)
+    lat_range = normalization_stats.lat_max - normalization_stats.lat_min
+    lon_range = normalization_stats.lon_max - normalization_stats.lon_min
+    if lat_range == 0 or lon_range == 0:
+        raise ValueError(f"Normalization coordinate range is zero (lat_range={lat_range}, lon_range={lon_range}); cannot normalize.")
+    lat_norm = (lat_flat - normalization_stats.lat_min) / lat_range
+    lon_norm = (lon_flat - normalization_stats.lon_min) / lon_range
 
     # Stack into (point, 2)
     tensor_x = xr.concat([lat_norm, lon_norm], dim="coord")
@@ -423,6 +433,8 @@ def prepare_meteoswiss_targets(
 
     # Normalize using stats (Z-Score)
     # Truth = (Temp - Input_Mean) / Input_Std
+    if normalization_stats.data_std == 0:
+        raise ValueError("Normalization data_std is zero (constant field); cannot normalize targets.")
     y_norm = (data_flat - normalization_stats.data_mean) / normalization_stats.data_std
 
     tensor_y = y_norm.transpose("time", "point")

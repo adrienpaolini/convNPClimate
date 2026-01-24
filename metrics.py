@@ -67,7 +67,12 @@ def compute_perpixel_metrics(
         crps_ref_per_pixel = np.nanmean(crps_ref_all, axis=0)
 
     global_skill = skill_score(np.nanmean(crps_all), np.nanmean(crps_ref_all))
-    skill_per_pixel = 1.0 - (crps_per_pixel / crps_ref_per_pixel)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        skill_per_pixel = np.where(
+            crps_ref_per_pixel > 0,
+            1.0 - (crps_per_pixel / crps_ref_per_pixel),
+            np.nan,
+        )
 
     def _to_masked_grid(flat: np.ndarray) -> np.ndarray:
         return np.where(valid_mask, flat.reshape(N, E), np.nan)
@@ -101,4 +106,6 @@ def skill_score(crps_model, crps_reference):
     Returns:
         Skill score (scalar).
     """
+    if crps_reference == 0:
+        return np.nan
     return 1.0 - (crps_model / crps_reference)
