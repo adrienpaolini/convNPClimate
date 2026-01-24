@@ -280,6 +280,57 @@ def plot_uncertainty_vs_error(
     return fig
 
 
+def plot_single_day_uncertainty(
+    predictions: np.ndarray,
+    sigma: np.ndarray,
+    truth: np.ndarray,
+    grid_shape: tuple[int, int],
+    metadata: ds.Era5Metadata,
+    title: str,
+):
+    """Plot uncertainty vs error for a single day's predictions.
+
+    Denormalizes predictions and truth to Celsius, computes absolute error,
+    reshapes to the spatial grid, and delegates to plot_uncertainty_vs_error.
+
+    Args:
+        predictions: Normalized predictions, shape (n_points,).
+        sigma: Predicted sigma values, shape (n_points,).
+        truth: Normalized ground truth, shape (n_points,).
+        grid_shape: (N, E) spatial grid dimensions.
+        metadata: Era5Metadata with denormalize method.
+        title: Plot title.
+
+    Returns:
+        matplotlib Figure.
+    """
+    N, E = grid_shape
+
+    pred_denorm = metadata.denormalize(predictions) - 273.15
+    truth_denorm = metadata.denormalize(truth) - 273.15
+
+    abs_error = np.abs(pred_denorm - truth_denorm)
+
+    sigma_grid = sigma.reshape(N, E)
+    abs_error_grid = abs_error.reshape(N, E)
+
+    # Mask pixels outside the valid MeteoSwiss domain
+    valid_mask = ~np.isnan(truth.reshape(N, E))
+    sigma_grid = np.where(valid_mask, sigma_grid, np.nan)
+    abs_error_grid = np.where(valid_mask, abs_error_grid, np.nan)
+
+    max_sigma = np.nanmax(sigma_grid)
+    max_error = np.nanmax(abs_error_grid)
+
+    return plot_uncertainty_vs_error(
+        sigma_grid=sigma_grid,
+        abs_error_grid=abs_error_grid,
+        title=title,
+        sigma_range=(0, max_sigma),
+        error_range=(0, max_error),
+    )
+
+
 def plot_crps_map(
     crps_grid: np.ndarray,
     title: str,
