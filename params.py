@@ -52,17 +52,14 @@ class Params:
     METEO_SWISS_MAX_TEMP_GLOB: str | None = None
     HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
 
+    def save_json(self, output_path: Path) -> None:
+        """Save this Params instance as JSON to specified path."""
+        json_utils.save_dataclass_json(self, output_path)
 
-# TODO: make this a method in the class
-def save_params_json(params: Params, output_path: Path) -> None:
-    """Save Params dataclass as JSON to specified path."""
-    json_utils.save_dataclass_json(params, output_path)
-
-
-# TODO: make this a static method in the class
-def load_params_json(params_json: Path) -> Params:
-    """Load Params dataclass from JSON file at specified path."""
-    return json_utils.load_dataclass_json(Params, params_json)
+    @staticmethod
+    def load_json(params_json: Path) -> 'Params':
+        """Load Params dataclass from JSON file at specified path."""
+        return json_utils.load_dataclass_json(Params, params_json)
 
 
 def is_renku() -> bool:
