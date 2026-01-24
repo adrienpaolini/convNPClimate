@@ -4,6 +4,7 @@ Training parameters dataclass and serialization utilities.
 
 import dataclasses
 import os
+import random
 from pathlib import Path
 from typing import Literal
 
@@ -103,10 +104,12 @@ def select_device():
 
 
 def set_seed(seed: int) -> None:
-    """Set random seeds for reproducibility across torch, numpy, and CUDA."""
+    """Set random seeds for reproducibility across torch, numpy, Python, and CUDA."""
     import numpy as np
     import torch
 
+    random.seed(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     torch.manual_seed(seed)
     np.random.seed(seed)
     if torch.cuda.is_available():
