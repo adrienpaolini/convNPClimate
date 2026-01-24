@@ -20,6 +20,9 @@ LossFn = Callable
 GetValueFn = Callable
 
 
+DRY_PROBABILITY_THRESHOLD = 0.5
+
+
 def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
     """
     Build convCNP model based on variable type.
@@ -65,7 +68,7 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
         def get_value_precip(p):
             """Extract mean prediction for precipitation (Gamma distribution)."""
             mean = p[:, :, 1] / p[:, :, 2]  # alpha / beta
-            mean[p[:, :, 0] <= 0.5] = 0  # Set to 0 when dry
+            mean[p[:, :, 0] <= DRY_PROBABILITY_THRESHOLD] = 0  # Set to 0 when dry
             return mean
 
         get_value_fn = get_value_precip
