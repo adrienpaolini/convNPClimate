@@ -54,6 +54,13 @@ class Params:
     HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
 
     def __post_init__(self):
+        assert self.N_EPOCHS > 0, "N_EPOCHS must be positive"
+        assert self.BATCH_SIZE > 0, "BATCH_SIZE must be positive"
+        assert self.N_FOLDS > 0, "N_FOLDS must be positive"
+        assert self.LR > 0, "LR must be positive"
+        assert self.VARIABLE in ('tmax', 'precip'), f"Unknown VARIABLE: {self.VARIABLE}"
+        assert self.RUN_TYPE in ('local', 'cloud'), f"Unknown RUN_TYPE: {self.RUN_TYPE}"
+
         import torch
         if isinstance(self.DEVICE, str):
             self.DEVICE = torch.device(self.DEVICE)
