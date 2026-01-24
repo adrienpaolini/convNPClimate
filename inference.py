@@ -25,7 +25,7 @@ class HoldoutFoldResult:
 
 def load_model_checkpoint(
     checkpoint_path: Path,
-    params: params.Params,
+    p: params.Params,
     device: torch.device
 ) -> tuple[nn.Module, int]:
     """
@@ -33,14 +33,14 @@ def load_model_checkpoint(
 
     Args:
         checkpoint_path: Path to the saved checkpoint file.
-        params: Training parameters used to build the model architecture.
+        p: Training parameters used to build the model architecture.
         device: Torch device to load the model onto.
 
     Returns:
         Tuple of (model, epoch) where epoch is the training epoch of the checkpoint.
     """
     # Build model architecture using shared factory
-    model, _, _ = model_factory.build_model(params)
+    model, _, _ = model_factory.build_model(p)
     model.to(device)
 
     # Load weights
