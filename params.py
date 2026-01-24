@@ -52,6 +52,13 @@ class Params:
     METEO_SWISS_MAX_TEMP_GLOB: str | None = None
     HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
 
+    def populate_from(self, data_paths) -> None:
+        """Populate data path fields from a DataPaths instance."""
+        self.ERA5_MAX_TEMP_GLOB = data_paths.ERA5_MAX_TEMP_GLOB
+        self.ERA5_GEOPOTENTIAL_GLOB = data_paths.ERA5_GEOPOTENTIAL_GLOB
+        self.METEO_SWISS_MAX_TEMP_GLOB = data_paths.METEO_SWISS_MAX_TEMP_GLOB
+        self.HI_RES_TOPOGRAPHY_ZARR_PATH = data_paths.HI_RES_TOPOGRAPHY_ZARR_PATH
+
     def save_json(self, output_path: Path) -> None:
         """Save this Params instance as JSON to specified path."""
         json_utils.save_dataclass_json(self, output_path)
