@@ -12,6 +12,16 @@ import numpy as np
 T = TypeVar('T')
 
 
+class _TorchDeviceEncoder(json.JSONEncoder):
+    """JSON encoder that serializes torch.device objects as strings."""
+
+    def default(self, o):
+        import torch
+        if isinstance(o, torch.device):
+            return str(o)
+        return super().default(o)
+
+
 def save_dataclass_json(obj: T, output_path: Path, numpy_fields: list[str] | None = None) -> None:
     """
     Save a dataclass as JSON to the specified path.
@@ -31,7 +41,7 @@ def save_dataclass_json(obj: T, output_path: Path, numpy_fields: list[str] | Non
                     setattr(obj_copy, field, value.tolist())
 
     with open(output_path, 'w') as f:
-        json.dump(asdict(obj_copy), f, indent=4)
+        json.dump(asdict(obj_copy), f, indent=4, cls=_TorchDeviceEncoder)
 
 
 def load_dataclass_json(

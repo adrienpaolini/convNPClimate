@@ -45,13 +45,18 @@ class Params:
 
     RUN_TYPE: Literal['local', 'cloud'] = 'local'
 
-    DEVICE: str = 'cpu'
+    DEVICE: str = 'cpu'  # Converted to torch.device in __post_init__
 
     # Data paths (saved during training for reproducibility)
     ERA5_MAX_TEMP_GLOB: str | None = None
     ERA5_GEOPOTENTIAL_GLOB: str | None = None
     METEO_SWISS_MAX_TEMP_GLOB: str | None = None
     HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
+
+    def __post_init__(self):
+        import torch
+        if isinstance(self.DEVICE, str):
+            self.DEVICE = torch.device(self.DEVICE)
 
     def populate_from(self, data_paths) -> None:
         """Populate data path fields from a DataPaths instance."""
