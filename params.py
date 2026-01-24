@@ -6,7 +6,7 @@ import dataclasses
 from pathlib import Path
 from typing import Literal
 
-from json_utils import save_dataclass_json, load_dataclass_json
+import json_utils
 
 
 @dataclasses.dataclass
@@ -52,11 +52,13 @@ class Params:
     HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
 
 
+# TODO: make this a method in the class
 def save_params_json(params: Params, output_path: Path) -> None:
     """Save Params dataclass as JSON to specified path."""
-    save_dataclass_json(params, output_path)
+    json_utils.save_dataclass_json(params, output_path)
 
 
+# TODO: make this a static method in the class
 def load_params_json(params_json: Path) -> Params:
     """Load Params dataclass from JSON file at specified path."""
-    return load_dataclass_json(Params, params_json)
+    return json_utils.load_dataclass_json(Params, params_json)

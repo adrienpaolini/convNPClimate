@@ -6,14 +6,14 @@ from pathlib import Path
 import torch
 import torch.nn as nn
 
-from params import Params
-from model_factory import build_model
+import params
+import model_factory
 from convCNP.training.utils import get_sigma_tmax, get_value_tmax
 
 
 def load_model_checkpoint(
     checkpoint_path: Path,
-    params: Params,
+    params: params.Params,
     device: torch.device
 ) -> tuple[nn.Module, int]:
     """
@@ -28,7 +28,7 @@ def load_model_checkpoint(
         Tuple of (model, epoch) where epoch is the training epoch of the checkpoint.
     """
     # Build model architecture using shared factory
-    model, _, _ = build_model(params)
+    model, _, _ = model_factory.build_model(params)
     model.to(device)
 
     # Load weights

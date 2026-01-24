@@ -6,7 +6,7 @@ import pandas as pd
 from matplotlib.ticker import FixedFormatter, FixedLocator, NullFormatter
 from scipy.ndimage import zoom
 
-from datasets import Era5Metadata
+import datasets as ds
 
 
 def plot_prediction_comparison(
@@ -15,7 +15,7 @@ def plot_prediction_comparison(
     era5_input: np.ndarray,
     grid_shape: tuple[int, int],
     era5_shape: tuple[int, int],
-    metadata: Era5Metadata,
+    metadata: ds.Era5Metadata,
     title: str,
     denormalize: bool = True,
     temp_range: tuple[float, float] = (-10, 30),
