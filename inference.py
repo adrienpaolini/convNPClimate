@@ -3,9 +3,11 @@
 from collections import OrderedDict
 from pathlib import Path
 
+import numpy as np
 import torch
 import torch.nn as nn
 
+import datasets as ds
 import params
 import model_factory
 from convCNP.training.utils import get_sigma_tmax, get_value_tmax
@@ -91,3 +93,62 @@ def predict_single_day(
         sigma = get_sigma_tmax(output)  # (1, n_points)
 
     return predictions.squeeze(0), sigma.squeeze(0)
+
+# TODO: return the result in a dataclass
+def predict_holdout_fold(
+    model: nn.Module,
+    context: torch.Tensor,
+    holdout_start: int,
+    holdout_end: int,
+    dists: torch.Tensor,
+    elev: torch.Tensor,
+    seasonal: torch.Tensor | None,
+    target_y: torch.Tensor,
+    metadata: ds.Era5Metadata,
+    device: torch.device,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Predict all holdout days for one fold and return denormalized results.
+
+    Args:
+        model: Trained model in eval mode.
+        context: ERA5 context data, shape (n_times, channels, lat, lon).
+        holdout_start: Start index of the holdout period (inclusive).
+        holdout_end: End index of the holdout period (exclusive).
+        dists: Distance tensor, shape (n_points, lat, lon).
+        elev: Elevation tensor, shape (n_points, n_elev_features).
+        seasonal: Seasonal features tensor (n_times, 2) or None.
+        target_y: Ground truth tensor, shape (n_times, n_points).
+        metadata: Era5Metadata with denormalize method.
+        device: Torch device.
+
+    Returns:
+        Tuple of (errors, preds, sigmas, truths) arrays, each shape
+        (holdout_days, n_points), denormalized to Celsius.
+    """
+    fold_errors = []
+    fold_preds = []
+    fold_sigmas = []
+    fold_truths = []
+
+    for day_idx in range(holdout_start, holdout_end):
+        day_preds, day_sigmas = predict_single_day(
+            model, context, day_idx, dists, elev, seasonal, device
+        )
+        day_preds_np = day_preds.cpu().numpy()
+        day_sigmas_np = day_sigmas.cpu().numpy()
+        day_truth = target_y[day_idx].cpu().numpy()
+
+        day_preds_denorm = metadata.denormalize(day_preds_np) - 273.15
+        day_truth_denorm = metadata.denormalize(day_truth) - 273.15
+
+        fold_errors.append(day_preds_denorm - day_truth_denorm)
+        fold_preds.append(day_preds_denorm)
+        fold_sigmas.append(day_sigmas_np)
+        fold_truths.append(day_truth_denorm)
+
+    return (
+        np.stack(fold_errors, axis=0),
+        np.stack(fold_preds, axis=0),
+        np.stack(fold_sigmas, axis=0),
+        np.stack(fold_truths, axis=0),
+    )
