@@ -35,6 +35,12 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
         loss_fn: The loss function for training.
         get_value_fn: Function to extract point predictions from model output.
     """
+    if params.IN_CHANNELS <= 0:
+        raise ValueError(
+            f"IN_CHANNELS={params.IN_CHANNELS} is invalid. "
+            "It must be set from the data before building the model (see cell 5)."
+        )
+
     # Build CNN decoder (same architecture for both variables)
     decoder = CNN(
         n_channels=params.N_CHANNELS,

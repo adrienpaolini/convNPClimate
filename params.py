@@ -25,7 +25,7 @@ class Params:
     N_BLOCKS: int = 6        # default in paper is 6
     KERNEL_SIZE: int = 5     # default in paper is 5
     LENGTH_SCALE: float = 0.1  # default in paper is 0.1
-    IN_CHANNELS: int = 25     # default in paper is 25; this is best computed dynamically from the data available
+    IN_CHANNELS: int = 0     # default in paper is 25; this is best computed dynamically from the data available
     SEASONAL_FEATURES_IN_MLP: bool = True  # Whether to include seasonal features (cos/sin of day-of-year) in elevation MLP
 
     # Training parameters
