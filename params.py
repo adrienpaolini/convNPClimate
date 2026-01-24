@@ -16,7 +16,7 @@ class Params:
     """Training and model configuration parameters."""
 
     # Data and mode parameters
-    VARIABLE: str = 'tmax'   # 'tmax' or 'precip'
+    VARIABLE: Literal['tmax', 'precip'] = 'tmax'
     DATA_YEAR_START: int | None = 2023  # Year to start loading data from, None to include all data
                                         # Used for quicker testing
 
