@@ -76,6 +76,41 @@ def load_metadata_json(metadata_json: Path) -> Era5Metadata:
     return load_dataclass_json(Era5Metadata, metadata_json, numpy_fields=ERA5_METADATA_NUMPY_FIELDS)
 
 
+@dataclasses.dataclass
+class DataPaths:
+    """Glob patterns and paths for all datasets."""
+    ERA5_MAX_TEMP_GLOB: str
+    ERA5_PRECIP_GLOB: str
+    ERA5_GEOPOTENTIAL_GLOB: str
+    EOBS_MAX_TEMP_GLOB: str
+    EOBS_PRECIP_GLOB: str
+    METEO_SWISS_MAX_TEMP_GLOB: str
+    METEO_SWISS_PRECIP_GLOB: str
+    HI_RES_TOPOGRAPHY_ZARR_PATH: str
+
+
+def build_data_paths(base_dataset_dir: Path | str) -> DataPaths:
+    """Construct all dataset glob patterns from a base directory.
+
+    Args:
+        base_dataset_dir: Root directory containing the dataset subdirectories.
+
+    Returns:
+        DataPaths with all glob patterns resolved.
+    """
+    base = Path(base_dataset_dir)
+    return DataPaths(
+        ERA5_MAX_TEMP_GLOB=str(base / 'ERA5_Land/max_temperature') + '/*.nc',
+        ERA5_PRECIP_GLOB=str(base / 'ERA5_Land/precipitation') + '/*.nc',
+        ERA5_GEOPOTENTIAL_GLOB=str(base / 'ERA5_Land/geopotential') + '/*.nc',
+        EOBS_MAX_TEMP_GLOB=str(base / 'EOBS/max_temperature') + '/*.nc',
+        EOBS_PRECIP_GLOB=str(base / 'EOBS/precipitation') + '/*.nc',
+        METEO_SWISS_MAX_TEMP_GLOB=str(base / 'MeteoSwiss/TmaxD_v2.0_swiss.lv95') + '/*.nc',
+        METEO_SWISS_PRECIP_GLOB=str(base / 'MeteoSwiss/RhiresD_v2.0_swiss.lv95') + '/*.nc',
+        HI_RES_TOPOGRAPHY_ZARR_PATH=str(base / 'topo_subset.zarr'),
+    )
+
+
 def load_era5_data(
     var_glob: Path | str,
     var_name: str = 't2m_max',

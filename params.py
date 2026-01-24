@@ -3,6 +3,7 @@ Training parameters dataclass and serialization utilities.
 """
 
 import dataclasses
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -62,3 +63,50 @@ def save_params_json(params: Params, output_path: Path) -> None:
 def load_params_json(params_json: Path) -> Params:
     """Load Params dataclass from JSON file at specified path."""
     return json_utils.load_dataclass_json(Params, params_json)
+
+
+def is_renku() -> bool:
+    return "RENKU_PROJECT_ID" in os.environ
+
+
+def configure_renku_cuda() -> None:
+    """Apply CUDA workarounds for Renku MIG (Multi-Instance GPU) partitions.
+
+    The CUDA caching allocator's "expandable segments" feature requires NVML
+    calls that fail on MIG devices. This disables that feature.
+    """
+    if "RENKU_PROJECT_ID" in os.environ:
+        os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:False,max_split_size_mb:512"
+
+
+def select_device():
+    """Select the best available torch device.
+
+    Priority: CUDA > MPS > CPU.
+    """
+    # Note: we import torch only here, instead of doing it on the
+    # top of the module to prevent this being imported before
+    # configure_renku_cuda is executed, which would make CUDA
+    # usage break.
+    import torch
+
+    if torch.cuda.is_available():
+        return torch.device('cuda')
+    elif torch.backends.mps.is_available():
+        return torch.device('mps')
+    else:
+        return torch.device('cpu')
+
+
+def set_seed(seed: int) -> None:
+    """Set random seeds for reproducibility across torch, numpy, and CUDA."""
+    import numpy as np
+    import torch
+
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed(seed)
+        torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False

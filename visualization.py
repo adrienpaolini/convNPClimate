@@ -3,6 +3,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 from matplotlib.ticker import FixedFormatter, FixedLocator, NullFormatter
 from scipy.ndimage import zoom
 
@@ -603,3 +604,71 @@ def plot_temporal_error_analysis(
     plt.tight_layout()
 
     return fig, correlation
+
+
+def plot_training_curves(stats: pd.DataFrame):
+    """Plot per-fold training curves: correlations and error/loss.
+
+    Args:
+        stats: DataFrame with columns Fold, Epoch, Pearson correlation,
+               Spearman correlation, Mean absolute error, train NLL, test NLL.
+
+    Returns:
+        matplotlib Figure.
+    """
+    sns.set_theme(context="paper", style="whitegrid")
+
+    folds = sorted(stats['Fold'].unique())
+    n_folds = len(folds)
+
+    fig, axes = plt.subplots(nrows=n_folds, ncols=2, figsize=(12, 12), sharex=False)
+    if n_folds == 1:
+        axes = axes.reshape(1, -1)
+
+    for i, fold in enumerate(folds):
+        fold_stats = stats[stats['Fold'] == fold]
+        palette = sns.color_palette()
+
+        # Correlations
+        ax = axes[i, 0]
+        fold_long = fold_stats.melt(
+            id_vars='Epoch',
+            value_vars=['Pearson correlation', 'Spearman correlation'],
+            var_name='Metric',
+            value_name='Correlation'
+        )
+        sns.lineplot(
+            data=fold_long, x='Epoch', y='Correlation', hue='Metric',
+            palette={'Pearson correlation': palette[0], 'Spearman correlation': palette[1]},
+            ax=ax
+        )
+        ax.set_title(f'Correlation Scores (Fold {fold})')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Correlation Score')
+        ax.set_ylim(-1, 1)
+        ax.set_xlim(0, stats['Epoch'].max())
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.legend(title='Metric', loc='lower right')
+
+        # Error / Loss
+        ax = axes[i, 1]
+        fold_long = fold_stats.melt(
+            id_vars='Epoch',
+            value_vars=['Mean absolute error', 'train NLL', 'test NLL'],
+            var_name='Error / Loss',
+            value_name='Value'
+        )
+        sns.lineplot(
+            data=fold_long, x='Epoch', y='Value', hue='Error / Loss',
+            palette={'Mean absolute error': palette[2], 'train NLL': palette[3], 'test NLL': palette[4]},
+            ax=ax
+        )
+        ax.set_title(f'Error/Loss (Fold {fold})')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Error / Loss')
+        ax.set_xlim(0, stats['Epoch'].max())
+        ax.grid(True, linestyle='--', alpha=0.7)
+        ax.legend(title='Metric', loc='upper right')
+
+    plt.tight_layout()
+    return fig
