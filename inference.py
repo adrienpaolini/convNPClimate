@@ -1,6 +1,7 @@
 """Inference utilities for trained convCNP models."""
 
 from collections import OrderedDict
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -11,6 +12,15 @@ import datasets as ds
 import params
 import model_factory
 from convCNP.training.utils import get_sigma_tmax, get_value_tmax
+
+
+@dataclass
+class HoldoutFoldResult:
+    """Results from predicting a holdout fold, denormalized to Celsius."""
+    errors: np.ndarray   # (holdout_days, n_points)
+    preds: np.ndarray    # (holdout_days, n_points)
+    sigmas: np.ndarray   # (holdout_days, n_points)
+    truths: np.ndarray   # (holdout_days, n_points)
 
 
 def load_model_checkpoint(
@@ -94,7 +104,6 @@ def predict_single_day(
 
     return predictions.squeeze(0), sigma.squeeze(0)
 
-# TODO: return the result in a dataclass
 def predict_holdout_fold(
     model: nn.Module,
     context: torch.Tensor,
@@ -106,7 +115,7 @@ def predict_holdout_fold(
     target_y: torch.Tensor,
     metadata: ds.Era5Metadata,
     device: torch.device,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+) -> HoldoutFoldResult:
     """Predict all holdout days for one fold and return denormalized results.
 
     Args:
@@ -122,8 +131,8 @@ def predict_holdout_fold(
         device: Torch device.
 
     Returns:
-        Tuple of (errors, preds, sigmas, truths) arrays, each shape
-        (holdout_days, n_points), denormalized to Celsius.
+        HoldoutFoldResult with errors, preds, sigmas, truths arrays,
+        each shape (holdout_days, n_points), denormalized to Celsius.
     """
     fold_errors = []
     fold_preds = []
@@ -146,9 +155,9 @@ def predict_holdout_fold(
         fold_sigmas.append(day_sigmas_np)
         fold_truths.append(day_truth_denorm)
 
-    return (
-        np.stack(fold_errors, axis=0),
-        np.stack(fold_preds, axis=0),
-        np.stack(fold_sigmas, axis=0),
-        np.stack(fold_truths, axis=0),
+    return HoldoutFoldResult(
+        errors=np.stack(fold_errors, axis=0),
+        preds=np.stack(fold_preds, axis=0),
+        sigmas=np.stack(fold_sigmas, axis=0),
+        truths=np.stack(fold_truths, axis=0),
     )
