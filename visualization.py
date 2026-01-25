@@ -657,6 +657,274 @@ def plot_temporal_error_analysis(
     return fig, correlation
 
 
+def plot_qq_calibration(
+    all_truths: np.ndarray,
+    all_preds: np.ndarray,
+    all_sigmas: np.ndarray,
+    title: str = "Q-Q Plot: Predicted vs Observed Distribution",
+    n_quantiles: int = 100,
+):
+    """
+    Plot Q-Q plot comparing predicted distribution quantiles to observed quantiles.
+
+    For each prediction, the model outputs N(μ, σ). We compute quantiles of this
+    predicted distribution and compare them to the actual observed quantiles of
+    the truth values. If calibrated, points should lie on the diagonal.
+
+    This uses the Probability Integral Transform (PIT): for well-calibrated
+    predictions, CDF(truth | μ, σ) should be uniform on [0, 1].
+
+    Args:
+        all_truths: Ground truth values, shape (n_days, n_points) or flattened
+        all_preds: Predicted means (same shape as all_truths)
+        all_sigmas: Predicted standard deviations (same shape as all_truths)
+        title: Plot title
+        n_quantiles: Number of quantile points to plot
+
+    Returns:
+        fig: matplotlib Figure
+        calibration_stats: dict with calibration statistics
+    """
+    from scipy import stats as scipy_stats
+
+    # Flatten arrays
+    truths_flat = all_truths.flatten()
+    preds_flat = all_preds.flatten()
+    sigmas_flat = all_sigmas.flatten()
+
+    # Remove NaN and invalid sigma values
+    valid_mask = (
+        ~np.isnan(truths_flat) &
+        ~np.isnan(preds_flat) &
+        ~np.isnan(sigmas_flat) &
+        (sigmas_flat > 0)
+    )
+    truths_valid = truths_flat[valid_mask]
+    preds_valid = preds_flat[valid_mask]
+    sigmas_valid = sigmas_flat[valid_mask]
+
+    n_valid = len(truths_valid)
+
+    # Compute PIT values: CDF of truth under predicted distribution N(pred, sigma)
+    # PIT = Φ((truth - pred) / sigma) where Φ is the standard normal CDF
+    pit_values = scipy_stats.norm.cdf(truths_valid, loc=preds_valid, scale=sigmas_valid)
+
+    # Define probability levels for Q-Q plot
+    probs = np.linspace(0.01, 0.99, n_quantiles)
+
+    # Theoretical quantiles: if well-calibrated, PIT ~ Uniform(0,1)
+    # So theoretical quantiles are just the probability levels themselves
+    theoretical_quantiles = probs
+
+    # Empirical quantiles of PIT values
+    empirical_quantiles = np.percentile(pit_values, probs * 100)
+
+    # Create figure
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+    # Plot Q-Q points
+    ax.scatter(theoretical_quantiles, empirical_quantiles, alpha=0.7, s=30, c='steelblue',
+               label='PIT quantiles')
+
+    # Plot reference line (perfect calibration)
+    ax.plot([0, 1], [0, 1], 'r-', linewidth=2, label='Perfect calibration')
+
+    ax.set_xlim(-0.02, 1.02)
+    ax.set_ylim(-0.02, 1.02)
+    ax.set_xlabel('Theoretical Quantiles (Uniform)')
+    ax.set_ylabel('Empirical Quantiles (PIT values)')
+    ax.set_title(title)
+    ax.legend(loc='upper left')
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.3)
+
+    # Compute calibration statistics
+    # 1. KS test: are PIT values uniform?
+    ks_stat, ks_p = scipy_stats.kstest(pit_values, 'uniform')
+
+    # 2. Coverage statistics using the PIT values
+    # If well-calibrated, X% of PIT values should be <= X for any X
+    coverage_50 = np.mean((pit_values >= 0.25) & (pit_values <= 0.75))  # Central 50%
+    coverage_90 = np.mean((pit_values >= 0.05) & (pit_values <= 0.95))  # Central 90%
+
+    # 3. Mean and std of PIT (should be 0.5 and ~0.289 for uniform)
+    pit_mean = np.mean(pit_values)
+    pit_std = np.std(pit_values)
+
+    # 4. Also compute z-score statistics for reference
+    z = (truths_valid - preds_valid) / sigmas_valid
+    z_std = np.std(z)
+
+    calibration_stats = {
+        'pit_mean': pit_mean,        # Should be ~0.5
+        'pit_std': pit_std,          # Should be ~0.289 (1/sqrt(12))
+        'coverage_50': coverage_50,  # Should be ~0.50
+        'coverage_90': coverage_90,  # Should be ~0.90
+        'ks_stat': ks_stat,
+        'ks_p': ks_p,
+        'z_std': z_std,              # Should be ~1 if calibrated
+        'n_valid': n_valid
+    }
+
+    # Add statistics text box
+    stats_text = (
+        f'n = {n_valid:,}\n'
+        f'PIT mean: {pit_mean:.3f} (ideal: 0.5)\n'
+        f'PIT std: {pit_std:.3f} (ideal: 0.289)\n'
+        f'Central 50% coverage: {coverage_50:.1%} (ideal: 50%)\n'
+        f'Central 90% coverage: {coverage_90:.1%} (ideal: 90%)\n'
+        f'z std: {z_std:.2f} (ideal: 1.0)\n'
+        f'KS p-value: {ks_p:.3g}'
+    )
+    ax.text(0.98, 0.02, stats_text, transform=ax.transAxes,
+            verticalalignment='bottom', horizontalalignment='right', fontsize=10,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    plt.tight_layout()
+
+    return fig, calibration_stats
+
+
+def plot_reliability_diagram(
+    all_truths: np.ndarray,
+    all_preds: np.ndarray,
+    all_sigmas: np.ndarray,
+    title: str = "Reliability Diagram: Predicted vs Observed Coverage",
+    n_bins: int = 20,
+):
+    """
+    Plot reliability diagram showing predicted confidence vs observed frequency.
+
+    For a well-calibrated probabilistic model, when we predict an X% confidence
+    interval, the true value should fall within that interval X% of the time.
+
+    This plot shows:
+    - X-axis: Predicted confidence level (e.g., 50%, 80%, 90%, 95%)
+    - Y-axis: Observed frequency (fraction of truths within that interval)
+
+    Args:
+        all_truths: Ground truth values, shape (n_days, n_points) or flattened
+        all_preds: Predicted means (same shape as all_truths)
+        all_sigmas: Predicted standard deviations (same shape as all_truths)
+        title: Plot title
+        n_bins: Number of confidence levels to evaluate
+
+    Returns:
+        fig: matplotlib Figure
+        calibration_stats: dict with calibration statistics
+    """
+    from scipy import stats as scipy_stats
+
+    # Flatten arrays
+    truths_flat = all_truths.flatten()
+    preds_flat = all_preds.flatten()
+    sigmas_flat = all_sigmas.flatten()
+
+    # Remove NaN and invalid sigma values
+    valid_mask = (
+        ~np.isnan(truths_flat) &
+        ~np.isnan(preds_flat) &
+        ~np.isnan(sigmas_flat) &
+        (sigmas_flat > 0)
+    )
+    truths_valid = truths_flat[valid_mask]
+    preds_valid = preds_flat[valid_mask]
+    sigmas_valid = sigmas_flat[valid_mask]
+
+    n_valid = len(truths_valid)
+
+    # Define confidence levels to evaluate (e.g., 10%, 20%, ..., 99%)
+    confidence_levels = np.linspace(0.05, 0.99, n_bins)
+
+    # For each confidence level, compute the observed coverage
+    observed_coverages = []
+    for conf in confidence_levels:
+        # For a Gaussian, the central conf% interval is [μ - z*σ, μ + z*σ]
+        # where z = Φ^(-1)((1 + conf) / 2)
+        z_score = scipy_stats.norm.ppf((1 + conf) / 2)
+
+        lower = preds_valid - z_score * sigmas_valid
+        upper = preds_valid + z_score * sigmas_valid
+
+        # Fraction of truths within this interval
+        within_interval = (truths_valid >= lower) & (truths_valid <= upper)
+        observed_coverage = np.mean(within_interval)
+        observed_coverages.append(observed_coverage)
+
+    observed_coverages = np.array(observed_coverages)
+
+    # Create figure
+    fig, ax = plt.subplots(1, 1, figsize=(8, 8))
+
+    # Plot reliability curve
+    ax.plot(confidence_levels, observed_coverages, 'o-', color='steelblue',
+            linewidth=2, markersize=6, label='Observed coverage')
+
+    # Plot reference line (perfect calibration)
+    ax.plot([0, 1], [0, 1], 'r--', linewidth=2, label='Perfect calibration')
+
+    # Shade regions
+    ax.fill_between(confidence_levels, confidence_levels, observed_coverages,
+                    where=(observed_coverages < confidence_levels),
+                    alpha=0.3, color='orange', label='Overconfident')
+    ax.fill_between(confidence_levels, confidence_levels, observed_coverages,
+                    where=(observed_coverages > confidence_levels),
+                    alpha=0.3, color='green', label='Underconfident')
+
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel('Predicted Confidence Level')
+    ax.set_ylabel('Observed Coverage (fraction within interval)')
+    ax.set_title(title)
+    ax.legend(loc='lower right')
+    ax.set_aspect('equal')
+    ax.grid(True, alpha=0.3)
+
+    # Compute summary statistics
+    # Mean absolute calibration error
+    mace = np.mean(np.abs(observed_coverages - confidence_levels))
+
+    # Root mean square calibration error
+    rmsce = np.sqrt(np.mean((observed_coverages - confidence_levels) ** 2))
+
+    # Specific coverage checks
+    idx_50 = np.argmin(np.abs(confidence_levels - 0.50))
+    idx_90 = np.argmin(np.abs(confidence_levels - 0.90))
+    idx_95 = np.argmin(np.abs(confidence_levels - 0.95))
+
+    coverage_at_50 = observed_coverages[idx_50]
+    coverage_at_90 = observed_coverages[idx_90]
+    coverage_at_95 = observed_coverages[idx_95]
+
+    calibration_stats = {
+        'mace': mace,
+        'rmsce': rmsce,
+        'coverage_at_50': coverage_at_50,
+        'coverage_at_90': coverage_at_90,
+        'coverage_at_95': coverage_at_95,
+        'confidence_levels': confidence_levels,
+        'observed_coverages': observed_coverages,
+        'n_valid': n_valid
+    }
+
+    # Add statistics text box
+    stats_text = (
+        f'n = {n_valid:,}\n'
+        f'MACE: {mace:.3f}\n'
+        f'RMSCE: {rmsce:.3f}\n'
+        f'At 50% conf: {coverage_at_50:.1%} observed\n'
+        f'At 90% conf: {coverage_at_90:.1%} observed\n'
+        f'At 95% conf: {coverage_at_95:.1%} observed'
+    )
+    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+            verticalalignment='top', horizontalalignment='left', fontsize=10,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    plt.tight_layout()
+
+    return fig, calibration_stats
+
+
 def plot_training_curves(stats: pd.DataFrame):
     """Plot per-fold training curves: correlations and error/loss.
 
