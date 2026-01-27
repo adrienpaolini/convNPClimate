@@ -22,16 +22,17 @@ class TmaxBiasConvCNPElev(nn.Module):
     decoder: convolutional architecture
     in_channels: number of input channels
     ls: length scale for final layer
-    use_seasonal: whether to include seasonal features (cos/sin of day-of-year)
+    use_seasonal_in_mlp: whether to include seasonal features (cos/sin of day-of-year)
     """
 
-    def __init__(self, decoder, in_channels=1, ls=0.1, use_seasonal=True):
+    def __init__(self, decoder, in_channels=1, ls=0.1, use_seasonal_in_mlp=True):
 
         super().__init__()
 
         self.encoder = Encoder(in_channels)
         self.decoder = decoder
-        self.use_seasonal = use_seasonal
+        self.use_seasonal_in_mlp = use_seasonal_in_mlp
+
 
         self.mlp = MLP(decoder.out_channels, 2,
             hidden_channels=64,
@@ -39,7 +40,7 @@ class TmaxBiasConvCNPElev(nn.Module):
 
         # Elevation MLP input: 2 (mu, sigma) + 3 (elev features) + 2 (seasonal) = 7
         # Or without seasonal: 2 + 3 = 5
-        elev_mlp_in_channels = 7 if use_seasonal else 5
+        elev_mlp_in_channels = 7 if use_seasonal_in_mlp else 5
         self.elev_mlp = MLP(elev_mlp_in_channels, 2,
             hidden_channels=64,
             hidden_layers=4)
@@ -80,7 +81,7 @@ class TmaxBiasConvCNPElev(nn.Module):
 
         elev_expanded = elev.repeat(batch_size, 1, 1)  # (batch, n_points, 3)
 
-        if self.use_seasonal and seasonal is not None:
+        if self.use_seasonal_in_mlp and seasonal is not None:
             # seasonal is (batch, 2), expand to (batch, n_points, 2)
             seasonal_expanded = seasonal.unsqueeze(1).expand(-1, n_points, -1)
             out = torch.cat([out, elev_expanded, seasonal_expanded], dim=2)
@@ -101,19 +102,19 @@ class GammaBiasConvCNPElev(nn.Module):
     decoder: convolutional architecture
     in_channels: number of input channels
     ls: length scale for final layer
-    use_seasonal: whether to include seasonal features (cos/sin of day-of-year)
+    use_seasonal_in_mlp: whether to include seasonal features (cos/sin of day-of-year)
     """
 
     def __init__(self,
                  decoder,
                  in_channels=1,
                  ls=0.1,
-                 use_seasonal=True):
+                 use_seasonal_in_mlp=True):
         super().__init__()
         self.in_channels = in_channels
         self.activation = torch.relu
         self.sigmoid = nn.Sigmoid()
-        self.use_seasonal = use_seasonal
+        self.use_seasonal_in_mlp = use_seasonal_in_mlp
 
         self.encoder = Encoder(in_channels=in_channels)
         self.mlp = MLP(in_channels=128,
@@ -128,7 +129,7 @@ class GammaBiasConvCNPElev(nn.Module):
 
         # Elevation MLP input: 3 (rho, alpha, beta) + 3 (elev features) + 2 (seasonal) = 8
         # Or without seasonal: 3 + 3 = 6
-        elev_mlp_in_channels = 8 if use_seasonal else 6
+        elev_mlp_in_channels = 8 if use_seasonal_in_mlp else 6
         self.elev_mlp = MLP(elev_mlp_in_channels,
             out_channels=3,
             hidden_channels=64,

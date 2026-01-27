@@ -57,7 +57,7 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
             decoder=decoder,
             in_channels=params.IN_CHANNELS,
             ls=params.LENGTH_SCALE,
-            use_seasonal=params.SEASONAL_FEATURES_IN_MLP,
+            use_seasonal_in_mlp=params.SEASONAL_FEATURES_IN_MLP,
         )
         loss_fn = gll
         get_value_fn = get_value_tmax
@@ -67,7 +67,7 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
             decoder=decoder,
             in_channels=params.IN_CHANNELS,
             ls=params.LENGTH_SCALE,
-            use_seasonal=params.SEASONAL_FEATURES_IN_MLP,
+            use_seasonal_in_mlp=params.SEASONAL_FEATURES_IN_MLP,
         )
         loss_fn = gamma_ll
 

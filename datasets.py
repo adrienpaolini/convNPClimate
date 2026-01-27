@@ -119,6 +119,7 @@ def load_era5_data(
     year_start: int | None = None,
     geopotential_glob: Path | str | None = None,
     geopotential_var_name: str = 'z',
+    include_seasonal_embeddings = True,
     device: torch.device | None = None,
 ) -> Tuple[torch.Tensor, Era5Metadata, torch.Tensor | None, np.ndarray]:
     """
@@ -207,8 +208,12 @@ def load_era5_data(
 
     # Channel stacking
     # Create the list of channels
-    channel_list = [norm_data, lat_channel, lon_channel, cos_channel, sin_channel]
-    channel_names = ['data', 'lat', 'lon', 'cos_time', 'sin_time']
+    channel_list = [norm_data, lat_channel, lon_channel]
+    channel_names = ['data', 'lat', 'lon']
+
+    if include_seasonal_embeddings:
+        channel_list.extend([cos_channel, sin_channel])
+        channel_names.extend(['cos_time', 'sin_time'])
 
     # xr.concat preserves dask arrays.
     tensor_Z = xr.concat(channel_list, dim="channel")
