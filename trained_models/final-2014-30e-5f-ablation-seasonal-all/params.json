@@ -20,5 +20,6 @@
     "ERA5_MAX_TEMP_GLOB": "datasets/ERA5_Land/max_temperature/*.nc",
     "ERA5_GEOPOTENTIAL_GLOB": "datasets/ERA5_Land/geopotential/*.nc",
     "METEO_SWISS_MAX_TEMP_GLOB": "datasets/MeteoSwiss/TmaxD_v2.0_swiss.lv95/*.nc",
-    "HI_RES_TOPOGRAPHY_ZARR_PATH": "datasets/topo_subset.zarr"
+    "HI_RES_TOPOGRAPHY_ZARR_PATH": "datasets/topo_subset.zarr",
+    "GEOPOTENTIAL_IN_CNN": false
 }
