@@ -23,7 +23,8 @@ class Params:
     # Ablation parameters
     SEASONAL_FEATURES: bool = True  # Whether to include seasonal features (cos/sin of day-of-year) at all
     SEASONAL_FEATURES_IN_MLP: bool = True  # Whether to include seasonal features (cos/sin of day-of-year) in elevation MLP
-    USE_MTPI: bool  = True
+    USE_ELEVATION: bool  = True  # Whether to include the elevation maps
+    USE_MTPI: bool  = True  # Only used if USE_ELEVATION is also True
 
     # Model parameters
     N_CHANNELS: int = 128    # default in paper is 128
