@@ -83,7 +83,7 @@ def plot_prediction_comparison(
 
     # ERA5 Input
     im0 = axes[0].imshow(era5_upsampled, cmap='RdYlBu_r', vmin=vmin, vmax=vmax, origin='lower')
-    axes[0].set_title(f'ERA5 Input ({unit})')
+    axes[0].set_title(f'Input ({unit})')
     axes[0].set_xlabel('E (grid index)')
     axes[0].set_ylabel('N (grid index)')
     plt.colorbar(im0, ax=axes[0], shrink=0.8)

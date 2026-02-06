@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "ABSOLUTE",
+    "sparsity_value": 20,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 4.9302077293396,
+    "rmse": 6.087686538696289,
+    "bias": 1.8090945482254028,
+    "crps": 4.830294666587787,
+    "skill_score": -0.9029719304295385
+  },
+  "correlations": {
+    "uncertainty_error": 0.1109773838273981,
+    "altitude_error": 0.2014366714796192,
+    "mtpi_error": -0.005341195875726563,
+    "doy_error": -0.17797997913446792
+  },
+  "calibration": {
+    "pit_mean": 0.39910434032121594,
+    "pit_std": 0.482178928442763,
+    "z_std": 35.472511291503906,
+    "coverage_50": 0.017522094417780246,
+    "coverage_90": 0.042695078911866954,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.4980093863383043,
+    "coverage_at_50": 0.017330914479442665,
+    "coverage_at_90": 0.041608299091934565,
+    "coverage_at_95": 0.048914944538944884
+  }
+}
