@@ -92,9 +92,12 @@ def predict_single_day(
         # Get seasonal features for this day if available
         day_seasonal = seasonal[day_idx:day_idx+1] if seasonal is not None else None  # (1, 2) or None
 
-        # Create mask
-        batch_size, channels, x, y = day_context.shape
-        mask = torch.ones(batch_size, channels, x, y).to(device)
+        # Derive mask from NaN in temperature channel (channel 0).
+        # Non-NaN → mask=1 (observed), NaN → mask=0 (unobserved).
+        # A context with no NaN produces the standard all-ones mask.
+        nan_mask = torch.isnan(day_context[:, 0:1])  # (1, 1, lat, lon)
+        mask = (~nan_mask).expand_as(day_context).float()
+        day_context = torch.nan_to_num(day_context, nan=0.0)
 
         # Forward pass with seasonal features (or None)
         output = model(day_context, mask, dists, elev, seasonal=day_seasonal)

@@ -14,6 +14,7 @@ import torch.nn.functional as F
 import xarray as xr
 
 from json_utils import save_dataclass_json, load_dataclass_json
+from params import set_seed
 from convCNP.validation.utils import get_dists
 
 
@@ -616,6 +617,195 @@ def compute_seasonal_features(
     print(f"Computed seasonal features: {seasonal_tensor.shape}, dtype: {seasonal_tensor.dtype}")
 
     return seasonal_tensor
+
+
+def sample_era5_grid_cells(
+    era5_shape: Tuple[int, int],
+    n_points: int | None = None,
+    frac: float | None = None,
+    seed: int | None = None,
+) -> np.ndarray | None:
+    """
+    Sample random ERA5 grid cell indices for sparse masking.
+
+    Args:
+        era5_shape: (n_lat, n_lon) shape of the ERA5 grid.
+        n_points: Absolute number of cells to keep (mutually exclusive with frac).
+        frac: Fraction of cells to keep (mutually exclusive with n_points).
+        seed: If provided, calls set_seed for reproducibility.
+
+    Returns:
+        Sorted flat indices of kept cells, or None if all cells are kept.
+    """
+    assert (n_points is None) != (frac is None), "Specify exactly one of n_points or frac"
+
+    n_lat, n_lon = era5_shape
+    total = n_lat * n_lon
+
+    if frac is not None:
+        n_keep = max(1, int(total * frac))
+    else:
+        n_keep = n_points
+
+    if n_keep >= total:
+        print(f"Keeping all {total} ERA5 grid cells (no sparsity)")
+        return None
+
+    if seed is not None:
+        set_seed(seed)
+    indices = np.random.choice(total, size=n_keep, replace=False)
+    print(f"Sampled {n_keep} of {total} ERA5 grid cells")
+    return np.sort(indices)
+
+
+def build_era5_sparse_mask(
+    era5_shape: Tuple[int, int],
+    n_channels: int,
+    cell_indices: np.ndarray,
+    device: torch.device,
+) -> torch.Tensor:
+    """
+    Build a sparse mask for ERA5 grid cells.
+
+    Args:
+        era5_shape: (n_lat, n_lon) shape of the ERA5 grid.
+        n_channels: Number of channels in the context tensor.
+        cell_indices: Flat indices of cells to keep (from sample_era5_grid_cells).
+        device: Torch device.
+
+    Returns:
+        Mask tensor of shape (1, channels, lat, lon) with 1s at kept cells.
+    """
+    n_lat, n_lon = era5_shape
+    mask_2d = torch.zeros(n_lat, n_lon, device=device)
+    lat_idx = torch.from_numpy(cell_indices // n_lon).long()
+    lon_idx = torch.from_numpy(cell_indices % n_lon).long()
+    mask_2d[lat_idx, lon_idx] = 1.0
+    return mask_2d.unsqueeze(0).unsqueeze(0).expand(1, n_channels, -1, -1).contiguous()
+
+
+def sample_meteoswiss_points(
+    target_y_tensor: torch.Tensor,
+    n_points: int | None = None,
+    frac: float | None = None,
+    seed: int | None = None,
+) -> np.ndarray:
+    """
+    Sample random MeteoSwiss point indices that have valid (non-NaN) data.
+
+    Uses the first time step to identify valid grid cells (inside Switzerland).
+
+    Args:
+        target_y_tensor: (n_times, n_points) MeteoSwiss target values (normalized).
+        n_points: Absolute number of points to sample (mutually exclusive with frac).
+        frac: Fraction of valid points to sample (mutually exclusive with n_points).
+        seed: If provided, calls set_seed for reproducibility.
+
+    Returns:
+        Sorted array of sampled point indices.
+    """
+    assert (n_points is None) != (frac is None), "Specify exactly one of n_points or frac"
+
+    valid_mask = ~torch.isnan(target_y_tensor[0])
+    valid_indices = torch.where(valid_mask)[0].cpu().numpy()
+
+    if frac is not None:
+        n_points = max(1, int(len(valid_indices) * frac))
+
+    if seed is not None:
+        set_seed(seed)
+    sampled = np.random.choice(valid_indices, size=min(n_points, len(valid_indices)), replace=False)
+    sampled = np.sort(sampled)
+
+    print(f"Sampled {len(sampled)} MeteoSwiss points from {len(valid_indices)} valid points")
+    return sampled
+
+
+def find_nearest_era5_indices(
+    target_x: xr.DataArray,
+    metadata: Era5Metadata,
+    point_indices: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Map sampled MeteoSwiss point indices to their nearest ERA5 grid cell indices.
+
+    Args:
+        target_x: (n_points, 2) normalized [lat, lon] coordinates of all MeteoSwiss points.
+        metadata: Era5Metadata with lat_coords, lon_coords, and normalization bounds.
+        point_indices: Indices of sampled MeteoSwiss points.
+
+    Returns:
+        Tuple of (lat_indices, lon_indices), each (n_sampled,) arrays of ERA5 grid indices.
+    """
+    lat_norm = target_x.sel(coord='lat').values[point_indices]
+    lon_norm = target_x.sel(coord='lon').values[point_indices]
+    lat_deg = lat_norm * (metadata.lat_max - metadata.lat_min) + metadata.lat_min
+    lon_deg = lon_norm * (metadata.lon_max - metadata.lon_min) + metadata.lon_min
+
+    lat_indices = np.argmin(
+        np.abs(metadata.lat_coords[np.newaxis, :] - lat_deg[:, np.newaxis]), axis=1
+    )
+    lon_indices = np.argmin(
+        np.abs(metadata.lon_coords[np.newaxis, :] - lon_deg[:, np.newaxis]), axis=1
+    )
+
+    n_unique = len(set(zip(lat_indices, lon_indices)))
+    print(f"Mapped {len(point_indices)} MeteoSwiss points to {n_unique} unique ERA5 grid cells")
+    return lat_indices, lon_indices
+
+
+def build_sparse_context(
+    target_y_tensor: torch.Tensor,
+    era5_template: torch.Tensor,
+    point_indices: np.ndarray,
+    era5_lat_idx: np.ndarray,
+    era5_lon_idx: np.ndarray,
+    day_idx: int,
+    device: torch.device,
+) -> torch.Tensor:
+    """
+    Build a sparse context grid from MeteoSwiss observations for one day.
+
+    Places sampled MeteoSwiss temperature observations at their nearest ERA5 grid cells.
+    Coordinate and seasonal channels come from the ERA5 template. Unobserved cells have
+    NaN in channel 0 — the model derives its mask from this NaN pattern. When multiple
+    points map to the same cell, their values are averaged.
+
+    Args:
+        target_y_tensor: (n_times, n_points) normalized MeteoSwiss temperatures.
+        era5_template: (n_times, channels, lat, lon) ERA5 data (for coordinate channels).
+        point_indices: Sampled MeteoSwiss point indices.
+        era5_lat_idx: ERA5 latitude indices for each sampled point.
+        era5_lon_idx: ERA5 longitude indices for each sampled point.
+        day_idx: Time index for this day.
+        device: Torch device.
+
+    Returns:
+        Context tensor (1, channels, lat, lon) with sparse MeteoSwiss temps in channel 0
+        and NaN at unobserved cells.
+    """
+    _, channels, n_lat, n_lon = era5_template.shape
+
+    # Clone ERA5 template for coordinate/seasonal channels
+    context = era5_template[day_idx:day_idx + 1].clone()
+    context[0, 0, :, :] = float('nan')  # NaN everywhere in temp channel
+
+    day_values = target_y_tensor[day_idx, point_indices]
+
+    # Accumulate on grid (averaging when multiple points hit the same cell)
+    counts = torch.zeros(n_lat, n_lon, device=device)
+    temp_sum = torch.zeros(n_lat, n_lon, device=device)
+
+    for i, (lat_i, lon_i) in enumerate(zip(era5_lat_idx, era5_lon_idx)):
+        val = day_values[i]
+        if not torch.isnan(val):
+            temp_sum[lat_i, lon_i] += val.item()
+            counts[lat_i, lon_i] += 1
+
+    observed = counts > 0
+    context[0, 0][observed] = temp_sum[observed] / counts[observed]
+
+    return context
 
 
 def interpolate_era5_to_targets(
