@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-ablation-seasonal-all",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "PERCENT",
+    "sparsity_value": 1.0,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 1.2915217876434326,
+    "rmse": 1.6921900510787964,
+    "bias": 0.07874567061662674,
+    "crps": 1.188260896843568,
+    "skill_score": 0.5318655923081161
+  },
+  "correlations": {
+    "uncertainty_error": 0.6317975100211956,
+    "altitude_error": 0.2780517413972099,
+    "mtpi_error": 0.014928589065723773,
+    "doy_error": 0.027295571352866806
+  },
+  "calibration": {
+    "pit_mean": 0.4768402495224094,
+    "pit_std": 0.4689894454966889,
+    "z_std": 8.452875137329102,
+    "coverage_50": 0.07104151088629608,
+    "coverage_90": 0.17195354785842598,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.4313125517923087,
+    "coverage_at_50": 0.07026334558819909,
+    "coverage_at_90": 0.1676453409464266,
+    "coverage_at_95": 0.19647980985584923
+  }
+}

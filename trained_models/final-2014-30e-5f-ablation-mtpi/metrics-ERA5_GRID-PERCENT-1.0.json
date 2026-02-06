@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-ablation-mtpi",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "PERCENT",
+    "sparsity_value": 1.0,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 1.3290411233901978,
+    "rmse": 1.7387027740478516,
+    "bias": -0.13258130848407745,
+    "crps": 1.2251304772878717,
+    "skill_score": 0.5173402307069807
+  },
+  "correlations": {
+    "uncertainty_error": 0.7028080823244358,
+    "altitude_error": 0.27486054702631824,
+    "mtpi_error": 0.12028035909309767,
+    "doy_error": 0.02920279362143371
+  },
+  "calibration": {
+    "pit_mean": 0.5352079101074717,
+    "pit_std": 0.46891884748401697,
+    "z_std": 8.629819869995117,
+    "coverage_50": 0.06953337090427256,
+    "coverage_90": 0.16822351695406998,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.43321835401727793,
+    "coverage_at_50": 0.06877057361765147,
+    "coverage_at_90": 0.16400789908756447,
+    "coverage_at_95": 0.19221649957539275
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-ablation-elevation",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "PERCENT",
+    "sparsity_value": 1.0,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 801.5892944335938,
+    "rmse": 1045.9237060546875,
+    "bias": 246.9548797607422,
+    "crps": 800.4666369953677,
+    "skill_score": -314.3566493539781
+  },
+  "correlations": {
+    "uncertainty_error": 0.34586425342281835,
+    "altitude_error": 0.7767073709347971,
+    "mtpi_error": -0.00809753454206329,
+    "doy_error": 0.0015220418938568711
+  },
+  "calibration": {
+    "pit_mean": 0.4353913926561931,
+    "pit_std": 0.4954356205895163,
+    "z_std": 92467.171875,
+    "coverage_50": 0.0008765393273157623,
+    "coverage_90": 0.002157646538736978,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.5188932186134917,
+    "coverage_at_50": 0.0008666749629702429,
+    "coverage_at_90": 0.0021016371117103683,
+    "coverage_at_95": 0.0024783526729578844
+  }
+}
