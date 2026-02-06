@@ -1,5 +1,7 @@
 """Visualization utilities for convCNP prediction analysis."""
 
+from pathlib import Path
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -8,6 +10,15 @@ from matplotlib.ticker import FixedFormatter, FixedLocator, NullFormatter
 from scipy.ndimage import zoom
 
 import datasets as ds
+
+
+def _save_fig(fig, save_path: str | Path | None):
+    """Save figure to disk if save_path is provided."""
+    if save_path is not None:
+        save_path = Path(save_path)
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(save_path, dpi=150, bbox_inches='tight')
+        print(f"  Saved plot: {save_path}")
 
 
 def plot_prediction_comparison(
@@ -20,7 +31,8 @@ def plot_prediction_comparison(
     title: str,
     denormalize: bool = True,
     temp_range: tuple[float, float] = (-10, 30),
-    residual_range: tuple[float, float] = (-10, 10)
+    residual_range: tuple[float, float] = (-10, 10),
+    save_path: str | Path | None = None,
 ):
     """
     Plot side-by-side heatmaps: ERA5 Input | Ground Truth | Predictions | Residuals
@@ -121,6 +133,7 @@ def plot_prediction_comparison(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig
 
@@ -131,7 +144,8 @@ def plot_error_maps(
     bias_grid: np.ndarray,
     title: str,
     error_range: tuple[float, float] = (0, 5),
-    bias_range: tuple[float, float] = (-3, 3)
+    bias_range: tuple[float, float] = (-3, 3),
+    save_path: str | Path | None = None,
 ):
     """
     Plot per-pixel error magnitude maps: MAE | RMSE | Mean Bias
@@ -193,6 +207,7 @@ def plot_error_maps(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig
 
@@ -202,7 +217,8 @@ def plot_uncertainty_vs_error(
     abs_error_grid: np.ndarray,
     title: str,
     sigma_range: tuple[float, float] = (0, 5),
-    error_range: tuple[float, float] = (0, 10)
+    error_range: tuple[float, float] = (0, 10),
+    save_path: str | Path | None = None,
 ):
     """
     Plot uncertainty (sigma) vs absolute error to check if uncertainty correlates with errors.
@@ -276,6 +292,7 @@ def plot_uncertainty_vs_error(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig
 
@@ -287,6 +304,7 @@ def plot_single_day_uncertainty(
     grid_shape: tuple[int, int],
     metadata: ds.Era5Metadata,
     title: str,
+    save_path: str | Path | None = None,
 ):
     """Plot uncertainty vs error for a single day's predictions.
 
@@ -328,13 +346,15 @@ def plot_single_day_uncertainty(
         title=title,
         sigma_range=(0, max_sigma),
         error_range=(0, max_error),
+        save_path=save_path,
     )
 
 
 def plot_crps_map(
     crps_grid: np.ndarray,
     title: str,
-    crps_range: tuple[float, float] = (0, 3)
+    crps_range: tuple[float, float] = (0, 3),
+    save_path: str | Path | None = None,
 ):
     """
     Plot per-pixel CRPS map.
@@ -363,6 +383,7 @@ def plot_crps_map(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig, mean_crps
 
@@ -371,7 +392,8 @@ def plot_skill_map(
     skill_grid: np.ndarray,
     global_skill: float,
     title: str,
-    skill_range: tuple[float, float] = (-1, 1)
+    skill_range: tuple[float, float] = (-1, 1),
+    save_path: str | Path | None = None,
 ):
     """
     Plot per-pixel skill score map.
@@ -405,6 +427,7 @@ def plot_skill_map(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig
 
@@ -414,7 +437,8 @@ def plot_perpixel_uncertainty_vs_error(
     mae_grid: np.ndarray,
     title: str,
     sigma_range: tuple[float, float] = (0, 5),
-    error_range: tuple[float, float] = (0, 5)
+    error_range: tuple[float, float] = (0, 5),
+    save_path: str | Path | None = None,
 ):
     """
     Plot per-pixel mean uncertainty (sigma) vs per-pixel MAE across all holdout days.
@@ -490,6 +514,7 @@ def plot_perpixel_uncertainty_vs_error(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig, correlation
 
@@ -503,7 +528,8 @@ def plot_perpixel_correlation(
     x_range: tuple[float, float] | None = None,
     y_range: tuple[float, float] | None = None,
     x_cmap: str = 'viridis',
-    y_cmap: str = 'YlOrRd'
+    y_cmap: str = 'YlOrRd',
+    save_path: str | Path | None = None,
 ):
     """
     Generic function to plot per-pixel correlation between two variables.
@@ -589,6 +615,7 @@ def plot_perpixel_correlation(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig, correlation
 
@@ -596,7 +623,8 @@ def plot_perpixel_correlation(
 def plot_temporal_error_analysis(
     all_errors: np.ndarray,
     holdout_dates: np.ndarray,
-    title: str
+    title: str,
+    save_path: str | Path | None = None,
 ):
     """
     Plot day of year vs mean absolute error scatter with correlation.
@@ -653,6 +681,7 @@ def plot_temporal_error_analysis(
 
     fig.suptitle(title, fontsize=14, fontweight='bold')
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig, correlation
 
@@ -663,6 +692,7 @@ def plot_qq_calibration(
     all_sigmas: np.ndarray,
     title: str = "Q-Q Plot: Predicted vs Observed Distribution",
     n_quantiles: int = 100,
+    save_path: str | Path | None = None,
 ):
     """
     Plot Q-Q plot comparing predicted distribution quantiles to observed quantiles.
@@ -781,6 +811,7 @@ def plot_qq_calibration(
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig, calibration_stats
 
@@ -791,6 +822,7 @@ def plot_reliability_diagram(
     all_sigmas: np.ndarray,
     title: str = "Reliability Diagram: Predicted vs Observed Coverage",
     n_bins: int = 20,
+    save_path: str | Path | None = None,
 ):
     """
     Plot reliability diagram showing predicted confidence vs observed frequency.
@@ -921,11 +953,12 @@ def plot_reliability_diagram(
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
     plt.tight_layout()
+    _save_fig(fig, save_path)
 
     return fig, calibration_stats
 
 
-def plot_training_curves(stats: pd.DataFrame):
+def plot_training_curves(stats: pd.DataFrame, save_path: str | Path | None = None):
     """Plot per-fold training curves: correlations and error/loss.
 
     Args:
@@ -990,4 +1023,5 @@ def plot_training_curves(stats: pd.DataFrame):
         ax.legend(title='Metric', loc='upper right')
 
     plt.tight_layout()
+    _save_fig(fig, save_path)
     return fig
