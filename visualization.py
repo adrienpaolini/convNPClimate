@@ -958,70 +958,119 @@ def plot_reliability_diagram(
     return fig, calibration_stats
 
 
-def plot_training_curves(stats: pd.DataFrame, save_path: str | Path | None = None):
-    """Plot per-fold training curves: correlations and error/loss.
-
-    Args:
-        stats: DataFrame with columns Fold, Epoch, Pearson correlation,
-               Spearman correlation, Mean absolute error, train NLL, test NLL.
+def _plot_training_curves_single(
+    fold_stats: pd.DataFrame,
+    x_max: int,
+    title_suffix: str,
+    save_path: str | Path | None = None,
+    log_corr: bool = False,
+):
+    """Plot a single two-panel training curve figure (correlations + error/loss).
 
     Returns:
         matplotlib Figure.
     """
-    sns.set_theme(context="paper", style="whitegrid")
+    palette = sns.color_palette()
+    fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(12, 5))
 
-    folds = sorted(stats['Fold'].unique())
-    n_folds = len(folds)
+    # Correlations
+    ax = axes[0]
+    long = fold_stats.melt(
+        id_vars='Epoch',
+        value_vars=['Pearson correlation', 'Spearman correlation'],
+        var_name='Metric',
+        value_name='Correlation'
+    )
+    sns.lineplot(
+        data=long, x='Epoch', y='Correlation', hue='Metric',
+        palette={'Pearson correlation': palette[0], 'Spearman correlation': palette[1]},
+        ax=ax
+    )
+    ax.set_title(f'Correlation Scores ({title_suffix})')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Correlation Score')
+    if log_corr:
+        ax.set_yscale('symlog', linthresh=0.01)
+    ax.set_ylim(-1, 1)
+    ax.set_xlim(0, x_max)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend(title='Metric', loc='lower right')
 
-    fig, axes = plt.subplots(nrows=n_folds, ncols=2, figsize=(12, 12), sharex=False)
-    if n_folds == 1:
-        axes = axes.reshape(1, -1)
-
-    for i, fold in enumerate(folds):
-        fold_stats = stats[stats['Fold'] == fold]
-        palette = sns.color_palette()
-
-        # Correlations
-        ax = axes[i, 0]
-        fold_long = fold_stats.melt(
-            id_vars='Epoch',
-            value_vars=['Pearson correlation', 'Spearman correlation'],
-            var_name='Metric',
-            value_name='Correlation'
-        )
-        sns.lineplot(
-            data=fold_long, x='Epoch', y='Correlation', hue='Metric',
-            palette={'Pearson correlation': palette[0], 'Spearman correlation': palette[1]},
-            ax=ax
-        )
-        ax.set_title(f'Correlation Scores (Fold {fold})')
-        ax.set_xlabel('Epoch')
-        ax.set_ylabel('Correlation Score')
-        ax.set_ylim(-1, 1)
-        ax.set_xlim(0, stats['Epoch'].max())
-        ax.grid(True, linestyle='--', alpha=0.7)
-        ax.legend(title='Metric', loc='lower right')
-
-        # Error / Loss
-        ax = axes[i, 1]
-        fold_long = fold_stats.melt(
-            id_vars='Epoch',
-            value_vars=['Mean absolute error', 'train NLL', 'test NLL'],
-            var_name='Error / Loss',
-            value_name='Value'
-        )
-        sns.lineplot(
-            data=fold_long, x='Epoch', y='Value', hue='Error / Loss',
-            palette={'Mean absolute error': palette[2], 'train NLL': palette[3], 'test NLL': palette[4]},
-            ax=ax
-        )
-        ax.set_title(f'Error/Loss (Fold {fold})')
-        ax.set_xlabel('Epoch')
-        ax.set_ylabel('Error / Loss')
-        ax.set_xlim(0, stats['Epoch'].max())
-        ax.grid(True, linestyle='--', alpha=0.7)
-        ax.legend(title='Metric', loc='upper right')
+    # Error / Loss
+    ax = axes[1]
+    long = fold_stats.melt(
+        id_vars='Epoch',
+        value_vars=['Mean absolute error', 'train NLL', 'test NLL'],
+        var_name='Error / Loss',
+        value_name='Value'
+    )
+    sns.lineplot(
+        data=long, x='Epoch', y='Value', hue='Error / Loss',
+        palette={'Mean absolute error': palette[2], 'train NLL': palette[3], 'test NLL': palette[4]},
+        ax=ax
+    )
+    ax.set_title(f'Error/Loss ({title_suffix})')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('Error / Loss')
+    ax.set_xlim(0, x_max)
+    ax.grid(True, linestyle='--', alpha=0.7)
+    ax.legend(title='Metric', loc='upper right')
 
     plt.tight_layout()
     _save_fig(fig, save_path)
+    plt.show()
     return fig
+
+
+def plot_training_curves(
+    stats: pd.DataFrame,
+    save_path: str | Path | None = None,
+    log_corr: bool = False,
+):
+    """Plot training curves: one figure per fold plus one for the fold average.
+
+    Args:
+        stats: DataFrame with columns Fold, Epoch, Pearson correlation,
+               Spearman correlation, Mean absolute error, train NLL, test NLL.
+        save_path: Optional path prefix. Each figure is saved by appending
+               ``_fold{N}.png`` or ``_all.png`` to this prefix.
+        log_corr: If True, use a symmetric-log scale on the correlation y-axis.
+
+    Returns:
+        List of matplotlib Figures (one per fold, then the average).
+    """
+    sns.set_theme(context="paper", style="whitegrid")
+
+    folds = sorted(stats['Fold'].unique())
+    x_max = stats['Epoch'].max()
+
+    if save_path is not None:
+        save_path = Path(save_path)
+        # Strip extension so callers can pass e.g. "plots/training.png"
+        suffix = save_path.suffix
+        stem = save_path.with_suffix('')
+
+    figures: list[plt.Figure] = []
+
+    for fold in folds:
+        fold_save = None
+        if save_path is not None:
+            fold_save = f"{stem}_fold{fold}{suffix}"
+        fig = _plot_training_curves_single(
+            stats[stats['Fold'] == fold], x_max, f'Fold {fold}', fold_save,
+            log_corr=log_corr,
+        )
+        figures.append(fig)
+
+    # Average across folds
+    avg_stats = stats.groupby('Epoch').mean(numeric_only=True).reset_index()
+    avg_save = None
+    if save_path is not None:
+        avg_save = f"{stem}_all{suffix}"
+    fig = _plot_training_curves_single(
+        avg_stats, x_max, 'Average across folds', avg_save,
+        log_corr=log_corr,
+    )
+    figures.append(fig)
+
+    return figures
