@@ -1,14 +1,207 @@
 \appendix
 \chapter{Appendix}
 \section{Code Structure and Responsibilities}
+\label{sec:code-structure}
 
 All the code produced, models trained, configurations used, plots and statistics generated can be found at \url{https://github.com/franciscopassos/convNPClimate/}.
 
-\todo{
-\begin{itemize}
-    \item Folder structure and module responsibilities.
-\end{itemize}
+\subsection{Repository Layout}
+
+The repository is organized as follows:
+
+\dirtree{%
+  .1 convNPClimate/.
+  .2 convCNP/\DTcomment{Original Vaughan et al.\ model code}.
+  .3 models/\DTcomment{Neural network architectures}.
+  .3 training/\DTcomment{Training and loss functions}.
+  .3 validation/\DTcomment{Fold splitting and distance utilities}.
+  .2 params.py\DTcomment{Configuration and hyperparameters}.
+  .2 datasets.py\DTcomment{Data loading and preprocessing}.
+  .2 model\_factory.py\DTcomment{Model construction}.
+  .2 inference.py\DTcomment{Prediction utilities}.
+  .2 metrics.py\DTcomment{Evaluation metrics (CRPS, skill)}.
+  .2 visualization.py\DTcomment{Plotting and calibration diagrams}.
+  .2 cloud\_sync.py\DTcomment{Renku cloud storage sync}.
+  .2 json\_utils.py\DTcomment{Dataclass serialization}.
+  .2 training\_notebook.ipynb\DTcomment{Training pipeline}.
+  .2 predictions.ipynb\DTcomment{Inference and evaluation}.
+  .2 trained\_models/\DTcomment{Saved checkpoints}.
+  .2 datasets/\DTcomment{ERA5, MeteoSwiss, topography data}.
+  .2 report-src/\DTcomment{This report}.
 }
+
+\subsection{Original Vaughan Code (\texttt{convCNP/})}
+
+The \texttt{convCNP/} directory contains the core ConvCNP implementation from Vaughan et al.~2022, with minimal modifications on our part (highlighted below, and all diffs in repo at \url{https://github.com/franciscopassos/convNPClimate/blob/master/convcnp-diffs.txt}).
+Its internal structure is as follows:
+
+\begin{description}
+
+  \item[\texttt{models/encoder.py}] The \emph{set convolution} encoder. Maps context observations onto a regular grid and produces a density channel indicating where data is present.
+
+  \item[\texttt{models/cnn.py}] The convolutional decoder: a residual CNN that transforms the gridded encoder output into a spatial feature map.
+
+  \item[\texttt{models/mlp.py}] A multi-layer perceptron block used as an intermediate mapping between the CNN output and the final distribution layer.
+
+  \item[\texttt{models/final\_layers.py}] Distribution-specific output layers.
+  \texttt{GaussianFinalLayer} outputs mean and standard deviation for temperature predictions; \newline \texttt{GammaFinalLayer} outputs the parameters of a Bernoulli--Gamma mixture for precipitation.
+  Both use an RBF kernel interpolation (\texttt{ParamLayer}) to map from the regular grid back to arbitrary target point locations.
+
+  \item[\texttt{models/models.py}] The base ConvCNP model classes: \texttt{TmaxBias\-ConvCNP} for temperature (Gaussian output) and \texttt{GammaBias\-ConvCNP} for precipitation (Bernoulli--Gamma output).
+  Each composes the encoder, CNN decoder, MLP, and final layer into a full forward pass.
+
+  \item[\texttt{models/elev\_models.py}] Elevation-enhanced variants: \texttt{Tmax\-Bias\-ConvCNP\-Elev} and \texttt{Gamma\-Bias\-ConvCNP\-Elev}.
+  These append an elevation MLP that refines the base model's predictions using topographic features (true elevation, elevation difference from ERA5, mTPI) and, optionally, seasonal features ($\cos$ and $\sin$ of day-of-year).
+  \begin{itemize}
+      \item[] \textbf{Changes introduced in this project:}
+      \begin{itemize}
+          \item Wired new hyperparameters for ablation: \texttt{use\_seasonal\_in\_mlp}
+      \end{itemize}
+  \end{itemize} 
+
+  \item[\texttt{training/training\_elev.py}] The main training loop supporting $k$-fold cross-validation with early stopping. Computes per-fold evaluation metrics (MAE, Pearson and Spearman correlation, NLL) and saves the best checkpoint per fold. \nopagebreak
+    \begin{itemize} \nopagebreak
+      \item[] \textbf{Changes introduced in this project:}
+      \begin{itemize}
+          \item Wired previously ignored hyperparameters: \texttt{device}, \texttt{batch\_size} and \texttt{patience}.
+          \item Wired hyperparameter for ablation: \texttt{device}, \texttt{batch\_size} and \texttt{patience}.
+          \item Wired \texttt{seasonal} features in for training.
+          \item Replaced hardcoded fold indices with a calculation based on \texttt{fold} and \texttt{n\_folds}.
+          \item Return more metrics (correlation scores).
+          \item Append statistics to a CSV file once per epoch.
+          \item Extracted logic into \texttt{get\_fold\_holdout\_indices()} and \texttt{select\_holdout\_day()} functions for reuse during prediction.
+          \item Bug fix: replaced use of \texttt{np.float()} (deprecated) with \texttt{.float()}.
+          \item Bug fix: suppressed warnings on empty slices.
+      \end{itemize}
+  \end{itemize} 
+
+  \item[\texttt{training/loss\_functions.py}] Negative log-likelihood losses: Gaussian (\texttt{gll}) for temperature and Bernoulli--Gamma (\texttt{gamma\_ll}) for precipitation.
+  Both handle missing target values (NaN masking).
+
+  \item[\texttt{models/utils.py}] Utility functions shared across model components: context mask generation, squared-distance computation between target points and grid cells, and a numerically stable softplus (\texttt{force\_positive}) used to enforce positive distribution parameters.
+  \begin{itemize}
+      \item[] \textbf{Changes introduced in this project:}
+      \begin{itemize}
+          \item Bug fix: hardcoded cuda() calls. Now using a hyperparameter.
+      \end{itemize}
+  \end{itemize} 
+
+\item[\texttt{training/utils.py}] Data preparation helpers for the training loop: epoch-level shuffling, fold splitting into train/held-out batches, value extraction functions (\texttt{get\_value\_tmax}, \texttt{get\_sigma\_tmax}), and the precipitation rain mask (\texttt{make\_r\_mask}).
+  \begin{itemize}
+      \item[] \textbf{Changes introduced in this project:}
+      \begin{itemize}
+            \item Wired previously ignored hyperparameters: \texttt{batch\_size}, \texttt{device}.
+            \item Wired hyperparameter: \texttt{seasonal}.
+            \item Bug fix: coercing a type to int, to prevent accidentally generating float indices which would cause a crash.
+            \item Exposed uncertainty via a function \texttt{get\_sigma\_tmax()}.
+      \end{itemize}
+  \end{itemize} 
+
+\item[\texttt{validation/utils.py}] Model loading and inference helpers for validation: reconstructs a model from a checkpoint, generates predictions on held-out data, and computes target-to-grid distances.
+  \begin{itemize}
+      \item[] \textbf{Changes introduced in this project:}
+      \begin{itemize}
+            \item Wired previously ignored hyperparameters: \texttt{in\_channels}, \texttt{n\_blocks}, \texttt{kernel\_size} and \texttt{length\_scale} (these were hardcoded).
+      \end{itemize}
+  \end{itemize} 
+
+\end{description}
+
+\subsection{Python Modules Added by This Project}
+
+The following modules, located at the repository root, were developed as part of this capstone project to provide the scaffolding needed for systematic experimentation, evaluation, and reproducibility.
+
+\begin{description}
+
+  \item[\texttt{params.py}]
+  Defines the \texttt{Params} dataclass, which centralizes all configurable hyperparameters and paths: model architecture settings (channels, blocks, kernel size), training settings (epochs, batch size, learning rate, patience, folds), ablation flags for seasonal features, elevation and mTPI, and output paths.
+  It also provides environment-detection utilities (\texttt{is\_renku()}, \texttt{configure\_renku\_cuda()}, \texttt{select\_device()}) and a reproducibility helper (\texttt{set\_seed()}).
+  Params instances are serializable to JSON via \texttt{save\_json()} and \texttt{load\_json()}, ensuring that every trained model has a complete record of its configuration.
+
+  \item[\texttt{datasets.py}]
+  This module is responsible for all data ingestion and preprocessing.
+  Key capabilities include:
+  \begin{itemize}
+    \item Loading ERA5-Land NetCDF files into normalized context tensors, with configurable auxiliary channels (latitude, longitude, seasonal encodings);
+    \item Coordinate conversion between WGS84 and Swiss LV95 projections;
+    \item Loading high-resolution topography (DEM and mTPI) from Zarr format;
+    \item Preparing MeteoSwiss ground truth as target tensors, including interpolation of high-resolution elevation features to target locations;
+    \item Building sparse context representations for limited input experiments;
+    \item Computing bilinear ERA5 interpolations to station locations as a deterministic baseline.
+  \end{itemize}
+
+  \item[\texttt{model\_factory.py}]
+  A factory function \texttt{build\_model()} that constructs the full model stack from a \texttt{Params} object. It returns a \texttt{(model, loss\_fn, get\_value\_fn)} tuple, abstracting the differences between temperature and precipitation model variants. Also provides \texttt{load\_model\_checkpoint()} for restoring trained models. This module allows consistent use across training and prediction. At training time we persist the metadata.json hyperparameters, and at training we use it to recreate and load the model. 
+
+  \item[\texttt{inference.py}]
+  Provides \texttt{predict\_single\_day()} for generating and denormalizing predictions for a single day and \texttt{predict\_holdout\_fold()} for doing the same across all holdout days in a cross-validation fold.
+
+  \item[\texttt{metrics.py}]
+  Computes per-pixel evaluation grids: MAE, RMSE, bias, CRPS , and a skill score relative to the deterministic ERA5 baseline.
+  Results are collected in a \texttt{PerPixelMetrics} dataclass.
+
+  \item[\texttt{visualization.py}]
+  A comprehensive plotting library ($\approx$1\,100 lines) covering:
+  \begin{itemize}
+    \item Single-day prediction comparisons (ERA5 input, ground truth, model output, residuals);
+    \item Per-pixel error maps (MAE, RMSE, bias) with spatial rendering;
+    \item Uncertainty analysis (predicted $\sigma$ vs.\ observed error);
+    \item Probabilistic calibration: Q--Q plots using the Probability Integral Transform (PIT) and reliability diagrams with MACE and RMSCE metrics;
+    \item CRPS and skill-score maps;
+    \item Training-curve visualization across folds.
+  \end{itemize}
+
+  \item[\texttt{cloud\_sync.py}]
+  Handles synchronization of datasets and trained models between local storage and the Renku network mount, enabling seamless transitions between local development and cloud training. (Note: using the remote mount directly from Polybox was timing out.)
+
+  \item[\texttt{json\_utils.py}]
+  Serialization helpers for dataclasses containing NumPy arrays and PyTorch device objects, used to persist \texttt{Params} and \texttt{Era5Metadata} as JSON.
+
+\end{description}
+
+\subsection{Main Notebooks}
+
+The two primary notebooks serve as the entry points for training and evaluation, respectively.
+
+\subsubsection{Training (\texttt{training\_notebook.ipynb})}
+
+This notebook orchestrates the end-to-end training pipeline:
+
+\begin{enumerate}
+  \item \textbf{Configuration.} A \texttt{Params} object is instantiated with the desired hyperparameters and ablation flags.
+  The notebook auto-detects the execution environment (local vs.\ Renku) and selects the appropriate compute device.
+
+  \item \textbf{Data loading.} ERA5-Land temperature and geopotential fields are loaded and normalized.
+  Seasonal features (cosine and sine of day-of-year) are optionally appended as additional input channels.
+  High-resolution DEM and mTPI grids are loaded from Zarr.
+  MeteoSwiss station observations are prepared as target tensors with associated elevation features.
+
+  \item \textbf{Training loop.} For each of the $k$ cross-validation folds, a fresh model is built via \texttt{model\_factory}, random seeds are reset for reproducibility, and \texttt{train\_elev()} is called.
+  Per-fold statistics (loss, MAE, correlations) are logged to CSV and, on Renku, checkpoints are synced to cloud storage after each fold completes.
+
+  \item \textbf{Summary.} Per-fold statistics are merged into a single CSV and training curves are visualized.
+\end{enumerate}
+
+The notebook saves all outputs---checkpoints, \texttt{params.json}, \texttt{metadata.json}, and statistics---to a timestamped directory under \texttt{trained\_models/}, ensuring full reproducibility of every experiment.
+
+\subsubsection{Prediction and Evaluation (\texttt{predictions.ipynb})}
+
+This notebook loads a trained model and performs comprehensive evaluation:
+
+\begin{enumerate}
+  \item \textbf{Configuration.} The user specifies a trained model by name and selects the input mode: \texttt{ERA5\_GRID} (full ERA5 context, optionally sparsified) or \texttt{METEOSWISS} (station-only context placed onto an otherwise empty grid).
+
+  \item \textbf{Data reconstruction.} The training configuration (\texttt{Params} and \texttt{Era5Metadata}) is loaded from the saved JSON files to ensure identical preprocessing. All datasets are reloaded accordingly.
+
+  \item \textbf{Per-fold inference.} For each cross-validation fold, the best checkpoint is loaded and predictions are generated for all holdout days. A representative day is selected for single-day visualizations (ERA5 input, ground truth, prediction, residuals).
+
+  \item \textbf{Combined evaluation.} Predictions from all folds are aggregated to compute per-pixel metrics: MAE, RMSE, bias, CRPS, and skill score relative to the ERA5 baseline.
+  Correlations with altitude and mTPI are analysed.
+
+  \item \textbf{Calibration analysis.} Uncertainty calibration is assessed via Q--Q plots (based on the PIT) and reliability diagrams that compare predicted confidence levels against observed coverage.
+
+  \item \textbf{Export.} All metrics are saved to a JSON file for downstream comparison across experiments. All plots are saved to a plots subfolder in the \texttt{trained\_models/<model\_name>} directory.
+\end{enumerate}
 
 \section{Running on Renku}
 \todo{
@@ -28,6 +221,8 @@ All the code produced, models trained, configurations used, plots and statistics
 \todo{
 \begin{itemize}
     \item Documentation: How to train, predict, and evaluate metrics.
+    \item What we store when we train and where we store it.
+    \item What we store when we predict, and where we store it.
 \end{itemize}
 }
 
@@ -36,11 +231,6 @@ All the code produced, models trained, configurations used, plots and statistics
     \item Tutorial: Adding new channels/features to the ConvCNP or MLP.
         \subitem use seasonal features as an example for both
 \end{itemize}
-}
-
-\section{What we had to change in Vaughan and problems we encountered}
-\todo{
-Populate this
 }
 
 \section{Glossary of Terms}

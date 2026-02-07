@@ -23,6 +23,7 @@ class HoldoutFoldResult:
     truths: np.ndarray   # (holdout_days, n_points)
 
 
+# TODO: move this function to model_factory
 def load_model_checkpoint(
     checkpoint_path: Path,
     p: params.Params,
