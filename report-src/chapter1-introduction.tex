@@ -2,8 +2,53 @@
 
 % --- CHAPTER 1: INTRODUCTION ---
 \chapter{Introduction}
-\section{Project  Motivation}
-\todo{Introduce the topic of climate data downscaling and the real-world problem of high-resolution temperature prediction. Explain the importance of localized climate data for decision-making.}
+\section{Project Motivation}
+
+Global numerical weather prediction (NWP) models and reanalysis products such as ERA5-Land provide spatially complete representations of atmospheric variables on regular grids. However, their spatial resolution---typically on the order of 9\,km for ERA5-Land---is too coarse for many local applications. Agriculture, infrastructure planning, energy systems, and natural hazard management all require temperature estimates at specific locations, where the local topography, land cover, and altitude can cause conditions to differ substantially from the surrounding grid cell average. In mountainous regions such as Switzerland, where elevation can change by hundreds of meters over short horizontal distances, this mismatch is particularly pronounced.
+
+The traditional approach to bridging this resolution gap is known as \textit{statistical downscaling}: learning a mapping from coarse-resolution gridded fields to fine-resolution local observations. Classical methods range from simple interpolation schemes (e.g.\ bilinear or nearest-neighbor) to more sophisticated geostatistical techniques such as kriging. While effective in some settings, these approaches often struggle to capture the complex, nonlinear relationships between large-scale atmospheric patterns and local surface conditions, particularly when auxiliary information such as high-resolution topography must be incorporated.
+
+Recent advances in deep learning have opened new avenues for statistical downscaling. Among the most promising are Neural Processes (NPs), a family of models that combine the flexibility of neural networks with principled uncertainty quantification. In particular, Convolutional Conditional Neural Processes (ConvCNPs) are designed to operate on spatial data: they accept an arbitrary set of context observations on a grid, learn translation-equivariant representations through convolutional architectures, and produce predictions---with calibrated uncertainty estimates---at any requested target location. Vaughan et al.\ (2022) demonstrated the viability of ConvCNPs for climate downscaling over the United Kingdom, showing competitive performance against established baselines.
+
+This project, defined by Dr.\ Christian Donner at ETH Z\"urich, sets out to explore the applicability of ConvCNPs for downscaling 2-meter temperature over Switzerland. By building upon the codebase and methodology of Vaughan et al.\ (2022), the goal is to assess how well these models perform in a new geographic and topographic context, to understand the contribution of individual input features, and to evaluate the robustness of the approach when context data is sparse---a scenario that is common in operational settings where station networks are thin or data is partially missing.
 
 \section{Problem Definition and Goal}
-\todo{Clearly state the data science problem: using Convolutional Conditional Neural Processes for spatial interpolation. State research questions regarding model performance on sparse data and feature importance.}
+
+The core data science problem addressed in this project is \textit{spatial interpolation with uncertainty}: given a set of coarse-resolution gridded weather fields (context points) and auxiliary topographic information, predict the 2-meter air temperature at specific ground-truth station locations (target points), together with a well-calibrated measure of predictive uncertainty.
+
+Formally, let
+%
+\[
+    \mathbf{X}_C = \{(\mathbf{x}_i,\; y_i)\}_{i=1}^{N_C}
+\]
+%
+denote the \textit{context set}, where $\mathbf{x}_i$ are spatial coordinates and $y_i$ are observed values from the ERA5-Land reanalysis grid and associated features (elevation, Topographic Position Index, seasonal encodings). Let
+%
+\[
+    \mathbf{X}_T = \{\mathbf{x}_j^*\}_{j=1}^{N_T}
+\]
+%
+denote the \textit{target set}, corresponding to MeteoSwiss ground-truth weather stations. The model learns a mapping $f_\theta$ that, conditioned on $\mathbf{X}_C$, predicts the distribution
+%
+\[
+    p(y_j^* \mid \mathbf{x}_j^*,\; \mathbf{X}_C)
+\]
+%
+at each target location. Crucially, this is a \textit{meta-learning} formulation: rather than fitting a single regression function, the model is trained across many tasks---each task being a different day's weather pattern with its own context and target sets---so that at inference time it can rapidly condition on a novel context set and generalize to unseen configurations without retraining. The ConvCNP achieves this in three stages:
+%
+\begin{enumerate}
+    \item \textbf{Encode:} the context set is mapped onto a discretized grid via a set convolution;
+    \item \textbf{Process:} the gridded representation is refined through a convolutional neural network (CNN);
+    \item \textbf{Decode:} at each target location, a multi-layer perceptron (MLP) maps the learned representation---together with location-specific features such as station elevation---to the \textit{parameters} of a predictive distribution (e.g.\ the mean $\mu_j$ and variance $\sigma_j^2$ of a Gaussian), thereby providing both a point estimate and a calibrated measure of uncertainty.
+\end{enumerate}
+
+This project investigates the following research questions:
+
+\begin{enumerate}
+    \item \textbf{Model viability:} Can a ConvCNP, originally demonstrated for the UK in Vaughan et al.\ (2022), produce accurate and well-calibrated temperature predictions for the topographically complex terrain of Switzerland?
+    \item \textbf{Feature importance:} What is the relative contribution of auxiliary input features---specifically seasonal encodings, elevation, and Topographic Position Index---to prediction accuracy? An ablation study systematically removes these features to quantify their impact.
+    \item \textbf{Robustness to sparse input:} How does model performance degrade as the number of available context points is progressively reduced? This question directly addresses the practical scenario of deploying such a model in regions with limited observational coverage.
+    \item \textbf{Skill over interpolation:} Does the ConvCNP provide measurable improvement (skill) over direct bilinear interpolation of the ERA5-Land grid to station locations?
+\end{enumerate}
+
+The remainder of this report is structured as follows. Chapter~2 provides the theoretical background on Neural Processes and related work. Chapter~3 details the data sources, preprocessing pipeline, and model implementation. Chapter~4 presents experimental results including global performance metrics, ablation analyses, and sparse-input experiments. Chapter~5 concludes with a discussion of limitations and directions for future work.

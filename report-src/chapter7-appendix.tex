@@ -39,3 +39,33 @@
 \todo{
 Populate this
 }
+
+\section{Glossary of Terms}
+
+\begin{description}
+
+    \item[Context set] The collection of input observations (locations and their associated values) provided to a Neural Process at inference time. In this project, the context set consists of ERA5-Land grid points with their temperature values and auxiliary features.
+
+    \item[Downscaling (statistical)] The process of deriving high-resolution local predictions from coarse-resolution gridded data by learning statistical relationships between large-scale fields and local observations, as opposed to dynamical downscaling which runs a high-resolution physics-based model.
+
+    \item[Meta-learning] A learning paradigm in which a model is trained across a distribution of tasks so that it learns not a single fixed function, but a \textit{family} of functions---captured as a predictive distribution conditioned on context. Each task corresponds to a different context--target split (e.g.\ a different day's weather). At inference time, the model conditions on a novel context set and produces a full predictive distribution over target values, without requiring retraining. Exposing the uncertainty allows the model training to minimize calibration error. See \textit{Uncertainty calibration} below.
+
+    \item[Neural Process (NP)] A family of neural network models that define distributions over functions. Given a context set of observed input--output pairs, an NP predicts the output distribution at arbitrary target locations, combining the flexibility of neural networks with the uncertainty-aware predictions of Gaussian Processes.
+
+    \item[Convolutional Conditional Neural Process (ConvCNP)] A member of the Neural Process family that uses a set convolution to map irregularly spaced context observations onto a regular grid, followed by a convolutional neural network to produce translation-equivariant representations. It outputs predictive distributions at arbitrary target locations.
+
+    \item[Reanalysis] A systematic approach to producing consistent, gridded datasets of atmospheric variables by combining historical observations with a numerical weather model through data assimilation. ERA5-Land is the high-resolution land component of the ERA5 reanalysis produced by ECMWF.
+
+    \item[Set convolution] An operation that maps a set of irregularly placed observations onto a regular grid by convolving each observation with a kernel function centered at its location. This is the mechanism by which ConvCNPs handle arbitrary input configurations.
+
+    \item[Spatial interpolation] The estimation of a variable's value at unobserved locations based on observed values at nearby locations. Methods range from simple nearest-neighbor or bilinear schemes to geostatistical approaches such as kriging and machine learning models.
+
+    \item[Target set] The collection of locations at which predictions are requested. In this project, target locations correspond to MeteoSwiss ground-truth weather stations.
+
+    \item[Topographic Position Index (TPI)] A measure of the relative elevation of a point compared to its surrounding terrain. Positive values indicate ridges or hilltops; negative values indicate valleys. TPI helps characterize the local topographic context that influences temperature.
+
+    \item[Translation equivariance] A property whereby shifting the input spatially produces a correspondingly shifted output. In ConvCNPs, this is enforced by the convolutional architecture and ensures that the model treats all spatial locations consistently.
+
+    \item[Uncertainty calibration] The degree to which a model's predicted confidence intervals match the observed frequency of outcomes. A well-calibrated model that predicts 90\% confidence intervals should contain the true value approximately 90\% of the time.
+
+\end{description}
