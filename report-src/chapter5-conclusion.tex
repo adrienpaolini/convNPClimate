@@ -6,19 +6,19 @@
 \section{Limitations}
 \todo{
 \begin{itemize}
-    \item \textbf{Data Breadth}: Fewer channels used compared to original \textit{Vaughan 2021} study.
+    \item \textbf{Data Breadth}: Fewer channels used compared to original \textit{Vaughan 2022} study.
     \item \textbf{Calibration}: Model is slightly overconfident; effect of training data volume.
     \item \textbf{Architecture}: Reflection on geopotential being in the MLP rather than the CNN channel (elevation-agnosticism).
 \end{itemize}}
 
 \todo{Incorporate
 \begin{itemize}
-    \item Vaughan 2021 was using far more data channels. This can be expanded.
+    \item Vaughan 2022 was using far more data channels. This can be expanded.
     \begin{itemize}
         \item Model generalizes well but is overconfident - discuss effect of years of data in training and what could be tried.
         \item Upon close inspection, geopotential (in direct relationship with altitude) was included as a channel into the CNN itself. We only included it into the MLP.
         \begin{itemize}
-            \item Interesting, that means the CNN in Vaughan 2021 is not elevation-agnostic
+            \item Interesting, that means the CNN in Vaughan 2022 is not elevation-agnostic
         \end{itemize}
     \end{itemize}
 \end{itemize}
@@ -34,7 +34,7 @@
     \item Include TPI at different resolution
     \item Include geopotential directly as a channel into the CNN!
     \item Model is notoriously missing any atmospheric data like wind fields. More promising ones: aspect, terrain cover, diurnal cycles, humidity, orographic features
-    \item Other avenues for exploration: predicting precipitation (also explored by Vaughan 2021, fully excluded from this project)
+    \item Other avenues for exploration: predicting precipitation (also explored by Vaughan 2022, fully excluded from this project)
     \item Explore if a larger elevation MLP would perform better. Perhaps we need higher dimensionality to capture the needs for reducing overconfidence.
 \end{itemize}
 }

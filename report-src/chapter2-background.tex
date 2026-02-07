@@ -42,15 +42,15 @@ The ConvCNP's translation equivariance is a key inductive bias for spatial probl
 
 \section{Related Work}
 
-\subsection{Vaughan et al.\ (2021): ConvCNPs for Climate Downscaling}
+\subsection{Vaughan et al.\ (2022): ConvCNPs for Climate Downscaling}
 
-Vaughan et al.\ (2021) were the first to apply ConvCNPs to the problem of climate downscaling, demonstrating the approach for temperature and precipitation over the United Kingdom. Their work used ERA5 reanalysis data (at approximately 27\,km resolution) as context, with ground-truth observations from the VALUE station network as targets. The model included multiple ERA5 channels---temperature, pressure, humidity, wind components, and geopotential---providing a rich atmospheric context. Notably, geopotential (directly related to altitude) was included as a CNN input channel, meaning the convolutional backbone itself was not elevation-agnostic.
+Vaughan et al.\ (2022) were the first to apply ConvCNPs to the problem of climate downscaling, demonstrating the approach for temperature and precipitation over the United Kingdom. Their work used ERA5 reanalysis data (at approximately 27\,km resolution) as context, with ground-truth observations from the VALUE station network as targets. The model included multiple ERA5 channels---temperature, pressure, humidity, wind components, and geopotential---providing a rich atmospheric context. Notably, geopotential (directly related to altitude) was included as a CNN input channel, meaning the convolutional backbone itself was not elevation-agnostic.
 
 Their results showed that ConvCNPs could match or exceed the performance of established statistical and dynamical downscaling baselines, while providing well-calibrated uncertainty estimates and requiring no hand-crafted feature engineering beyond the choice of input channels. The accompanying open-source codebase provided implementations of the encoder, CNN, MLP decoder, training loop, and evaluation metrics.
 
 \subsection{How This Project Extends Vaughan et al.}
 
-This project builds directly on the Vaughan et al.\ (2021) codebase and methodology, adapting and extending it for a new geographic domain and research focus. The key differences are summarized below.
+This project builds directly on the Vaughan et al.\ (2022) codebase and methodology, adapting and extending it for a new geographic domain and research focus. The key differences are summarized below.
 
 \paragraph{Geographic domain.} The study area shifts from the relatively flat UK mainland (elevation range 0--1000\,m) to Alpine Switzerland (elevation range approximately 180--4675\,m). The extreme topographic complexity of the Swiss Alps---where elevation can change by over 1000\,m within a few kilometers---presents a substantially harder downscaling challenge and makes elevation-aware modeling essential.
 

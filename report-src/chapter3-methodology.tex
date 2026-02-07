@@ -171,11 +171,11 @@ The downscaling task can be approached with methods ranging from bilinear interp
     \item \textbf{End-to-end learning.} All components are jointly trained by maximizing the log-likelihood of target observations, learning optimal internal representations directly from data.
 \end{enumerate}
 
-\subsection{Leveraging Vaughan et al.\ (2021)}
+\subsection{Leveraging Vaughan et al.\ (2022)}
 
-This project builds on the open-source ConvCNP implementation of Vaughan et al.\ (2021), which provided the encoder, ResNet decoder, MLP, training loop, loss functions, and evaluation metrics. Several elements had been adapted from Dubois' Neural Process repository, notably the \texttt{ProbabilityConverter} and depth-separable convolution blocks.
+This project builds on the open-source ConvCNP implementation of Vaughan et al.\ (2022), which provided the encoder, ResNet decoder, MLP, training loop, loss functions, and evaluation metrics. Several elements had been adapted from Dubois' Neural Process repository, notably the \texttt{ProbabilityConverter} and depth-separable convolution blocks.
 
-Starting from this base, very few modifications were made to the code from Vaughan et al.\ (2021); a detailed list is included in the Appendix. Those python modules were used to build a separate set of libraries and tooling to adapt the model to the Swiss domain:
+Starting from this base, very few modifications were made to the code from Vaughan et al.\ (2022); a detailed list is included in the Appendix. Those python modules were used to build a separate set of libraries and tooling to adapt the model to the Swiss domain:
 
 \begin{itemize}
     \item WGS84/LV95 coordinate handling;
@@ -186,7 +186,7 @@ Starting from this base, very few modifications were made to the code from Vaugh
 \subsection{Architecture Overview}
 \label{sec:architecture_overview}
 
-The temperature downscaling model (\texttt{TmaxBiasConvCNPElev}, from Vaughan et al.\ (2021)) consists of four sequential stages:
+The temperature downscaling model (\texttt{TmaxBiasConvCNPElev}, from Vaughan et al.\ (2022)) consists of four sequential stages:
 
 \begin{enumerate}
     \item \textbf{Encoder (set convolution).} Maps the context tensor and a binary mask onto a representation per grid cell using convolutions (kernel size 5).
@@ -225,7 +225,7 @@ The dataset is split temporally: a 5-fold scheme divides the time series into co
 
 \subsubsection{Hyperparameters}
 
-Table~\ref{tab:hyperparams} summarizes the hyperparameters. Values marked $\dagger$ follow Vaughan et al.\ (2021).
+Table~\ref{tab:hyperparams} summarizes the hyperparameters. Values marked $\dagger$ follow Vaughan et al.\ (2022).
 
 \begin{table}[ht]
 \centering
