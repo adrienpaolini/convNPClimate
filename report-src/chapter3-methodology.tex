@@ -159,11 +159,132 @@ A pre-computed distance tensor of shape (\textit{n\_target\_points}, 29, 61) sto
 All normalization statistics---the global mean and standard deviation of the ERA5-Land temperature field, the latitude and longitude bounding box, and the original coordinate arrays---are encapsulated in an \texttt{Era5Metadata} dataclass and serialized to JSON alongside each trained model. Similarly, the full training configuration (hyperparameters, ablation switches, data paths, and random seeds) is captured in a \texttt{Params} dataclass and persisted in the same manner. This ensures that any trained model can be loaded and used for inference with the exact normalization and configuration parameters that were used during training, without relying on the original data files being accessible. Both dataclasses support round-trip JSON serialization, including special handling for NumPy arrays in the metadata.
 
 \section{Model Selection and Implementation}
-\todo{
+
+\subsection{Why a Convolutional Conditional Neural Process?}
+
+The downscaling task can be approached with methods ranging from bilinear interpolation to geostatistical kriging to fully convolutional super-resolution networks. The ConvCNP was selected for four reasons:
+
+\begin{enumerate}
+    \item \textbf{Probabilistic output.} The model predicts the parameters of a Gaussian distribution $(\mu, \sigma)$ per target point, providing calibrated uncertainty estimates alongside point predictions.
+    \item \textbf{Translation equivariance.} The convolutional architecture encodes the prior that spatial relationships are position-invariant---a sound inductive bias for meteorological fields.
+    \item \textbf{Flexible context conditioning.} The set convolution encoder accepts variable numbers of context observations at arbitrary locations, making the model robust to missing data.
+    \item \textbf{End-to-end learning.} All components are jointly trained by maximizing the log-likelihood of target observations, learning optimal internal representations directly from data.
+\end{enumerate}
+
+\subsection{Leveraging Vaughan et al.\ (2021)}
+
+This project builds on the open-source ConvCNP implementation of Vaughan et al.\ (2021), which provided the encoder, ResNet decoder, MLP, training loop, loss functions, and evaluation metrics. Several elements had been adapted from Dubois' Neural Process repository, notably the \texttt{ProbabilityConverter} and depth-separable convolution blocks.
+
+Starting from this base, very few modifications were made to the code from Vaughan et al.\ (2021); a detailed list is included in the Appendix. Those python modules were used to build a separate set of libraries and tooling to adapt the model to the Swiss domain:
+
 \begin{itemize}
-    \item \textbf{Justification}: Why ConvCNP was chosen over traditional interpolation.
-    \item \textbf{Leveraging Vaughan2021}: explain exactly what was changed in their code and why, explain that we are leveraging their model structure, metrics and tooling to build upon
-    \item \textbf{Experimental Setup}: Details on training/validation/test splits and cross-validation holdout sets.
-    \item \textbf{Tech Stack}: Renku, Python, PyTorch, xarray, and Dask.
+    \item WGS84/LV95 coordinate handling;
+    \item using high-resolution topographic features;
+    \item using cyclical seasonal encodings.
 \end{itemize}
-}
+
+\subsection{Architecture Overview}
+\label{sec:architecture_overview}
+
+The temperature downscaling model (\texttt{TmaxBiasConvCNPElev}, from Vaughan et al.\ (2021)) consists of four sequential stages:
+
+\begin{enumerate}
+    \item \textbf{Encoder (set convolution).} Maps the context tensor and a binary mask onto a representation per grid cell using convolutions (kernel size 5).
+
+    \item \textbf{CNN decoder (ResNet).} Residual blocks with convolutions process the encoded grid, compressing the representation.
+
+    \item \textbf{Grid-to-point interpolation.} An MLP maps the CNN output to $(\mu, \sigma)$ at each grid cell. These are interpolated to the target points via an RBF kernel with learnable length scale $\ell$, using a pre-computed distance tensor. The standard deviation is constrained to be strictly positive.
+
+    \item \textbf{Elevation MLP.} The interpolated $(\mu, \sigma)$ are concatenated with five auxiliary features---true elevation, elevation difference, TPI, and two seasonal encodings---and passed through an MLP that outputs topography- and season-corrected predictions.
+\end{enumerate}
+
+\subsection{Loss Function}
+
+The model is trained by maximizing the Gaussian log-likelihood:
+%
+\begin{equation}
+    \mathcal{L} = \frac{1}{N}\sum_{i=1}^{N} \log \mathcal{N}\bigl(y_i \mid \mu_i,\, \sigma_i\bigr)
+\end{equation}
+%
+where $y_i$ is the observed normalized temperature and $(\mu_i, \sigma_i)$ are the predicted distribution parameters. NaN targets (points outside the Swiss border) are excluded. If we look at the following expansion:
+
+%
+\begin{equation}
+    \log \mathcal{N}(y \mid \mu, \sigma) = -\tfrac{1}{2}\log(2\pi) - \underbrace{\log\sigma}_{\text{penalizes low $\sigma$ (overconfidence)}} - \underbrace{\frac{(y - \mu)^2}{2\sigma^2}}_{\text{penalizes high $\sigma$ (overconfidence)}}
+\end{equation}
+%
+
+we realize that this objective incentivizes both accurate means and well-calibrated uncertainty: overconfident predictions are penalized by the $\log\sigma$ term, while underconfident predictions are penalized by the squared-error term.
+
+\subsection{Experimental Setup}
+\label{sec:experimental_setup}
+
+\subsubsection{Temporal $k$-Fold Cross-Validation}
+
+The dataset is split temporally: a 5-fold scheme divides the time series into contiguous blocks, holding out one block for validation per fold (${\sim}$73 days each for the single-year dataset). For each fold, training days are shuffled and batched, the held-out fold is evaluated after every epoch (NLL, MAE, Pearson and Spearman correlations), the best checkpoint is saved by validation NLL, and early stopping halts training after 10 epochs without improvement.
+
+\subsubsection{Hyperparameters}
+
+Table~\ref{tab:hyperparams} summarizes the hyperparameters. Values marked $\dagger$ follow Vaughan et al.\ (2021).
+
+\begin{table}[ht]
+\centering
+\caption{Model and training hyperparameters.}
+\label{tab:hyperparams}
+\begin{tabular}{@{}llr@{}}
+\toprule
+\textbf{Category} & \textbf{Parameter} & \textbf{Value} \\
+\midrule
+\multirow{4}{*}{Architecture}
+    & CNN channels$^\dagger$            & 128 \\
+    & ResConvBlocks$^\dagger$           & 6 \\
+    & Kernel size$^\dagger$             & 5 \\
+    & RBF length scale$^\dagger$        & 0.1 \\
+\midrule
+\multirow{2}{*}{MLP}
+    & Hidden layers$^\dagger$           & 4 \\
+    & Units per layer$^\dagger$         & 64 \\
+\midrule
+\multirow{5}{*}{Training}
+    & Learning rate$^\dagger$           & $5 \times 10^{-4}$ \\
+    & Optimizer                         & Adam \\
+    & Batch size                        & 16 (local) / 8 (Renku) \\
+    & Max epochs                        & 10 / 30 (default) / 100 \\
+    & Early stopping patience           & 10 \\
+\midrule
+\multirow{2}{*}{Validation}
+    & Folds                             & 5 \\
+    & Split strategy                    & Temporal (contiguous) \\
+\midrule
+Reproducibility & Seed                  & 42 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Individual models may have been trained with different hyperparameters.
+For each model, all hyperparameters were stored in a file named \newline \texttt{trained\_models/<model\_name>/metadata.json}.
+
+\subsection{Ablation Experiments}
+
+To isolate the contribution of individual components, ablation experiments toggle feature flags in the configuration while keeping all other hyperparameters and cross-validation splits identical:
+
+\begin{itemize}
+    \item \textbf{No MTPI} (\texttt{USE\_MTPI=False}): MTPI is excluded from the elevation MLP.
+    \item \textbf{No elevation} (\texttt{USE\_ELEVATION=False}): the elevation MLP receives only the CNN's base prediction, isolating the CNN's downscaling skill fully from all topographic correction.
+    \item \textbf{No seasonal in MLP} (\texttt{SEASONAL\_FEATURES\_IN\_MLP=False}): seasonal features remain in the CNN input but are withheld from the elevation MLP.
+    \item \textbf{No seasonal} (\texttt{SEASONAL\_FEATURES=False}): cyclical day-of-year channels are removed entirely, forcing the model to make its predictions without knowing which time in the year it is. Weather behaviour at altitude varies greatly depending on the seasons.
+\end{itemize}
+
+\subsection{Technology Stack}
+
+The project is implemented in Python on the following stack:
+
+\begin{itemize}
+    \item \textbf{PyTorch} for model definition, training, and GPU inference.
+    \item \textbf{xarray} and \textbf{Dask} for lazy-loading and processing of NetCDF/Zarr datasets.
+    \item \textbf{pyproj} for WGS84\,/\,LV95 coordinate transformations.
+    \item \textbf{scipy} and \textbf{scikit-learn} for evaluation metrics and preprocessing.
+    \item \textbf{Renku} (SDSC) for reproducible environments, GPU cloud sessions (NVIDIA MIG partitions), and version control.
+\end{itemize}
+
+Reproducibility is enforced by seeding all random number generators (Python, NumPy, PyTorch, CUDA) with a fixed seed and setting \texttt{cudnn.deterministic=True}.
