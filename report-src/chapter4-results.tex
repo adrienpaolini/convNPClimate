@@ -1,0 +1,38 @@
+% --- CHAPTER 4: RESULTS AND EVALUATION ---
+\chapter{Results and Evaluation}
+\section{Experimental Results}
+\todo{Summary of high-level training metrics and convergence.}
+
+\section{Performance}
+\subsection{Global metrics}
+\todo{Metrics across model sizes (1 year, 10 years, all years), MAE, RMSE, Bias, and CRPS.}
+\todo{Q-Q plots and comparisons against standard ERA5-Land interpolation (skill).}
+
+\subsection{Correlations}
+\todo{Error vs. Uncertainty, Altitude vs. Uncertainty, Season vs. Error.}
+
+\section{Ablation Analysis}
+\todo{
+Evaluating the impact of specific components (10-year data):
+\begin{itemize}
+    \item Base model vs. removal of seasonal features (MLP vs. entire model).
+    \item Removal of TPI and Elevation features.
+\end{itemize}
+}
+
+\section{Performance on Sparse Input}
+\todo{Testing model robustness with varying ERA5-Land points: 1\%, 250, 120, 100, 80, 50, and 20 points.}
+
+\section{Discussion of Results}
+\todo{Analyze if the model supports the hypotheses. Discuss the implications of the ablation study and the model's capacity to work from sparse inputs.
+\begin{itemize}
+    \item Can these models perform well? Yes and why
+    \begin{itemize}
+        \item What does ablation reveal?
+        \item How well can the model work from sparse input?
+    \end{itemize}
+    \item How does this compare against ERA5-Land interpolation (skill), plots
+    \item Training more epochs up to 100 keeps improving results.
+    \item Training using more years worth of data (confirm) keeps improving results.
+\end{itemize}
+}

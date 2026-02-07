@@ -1,0 +1,34 @@
+% --- CHAPTER 3: METHODOLOGY ---
+\chapter{Methodology}
+\section{Data Acquisition and Description}
+\todo{Review and link the sources, include targets used from MeteoSwiss}
+\begin{itemize}
+    \item \textbf{Sources}: ERA5-Land (gridded reanalysis) and GEBCO elevation data.
+    \item \textbf{Dataset Details}: Size, dimensions, and data types used for training.
+\end{itemize}
+
+\section{Data Preprocessing and Exploration}
+\todo{
+\begin{itemize}
+    \item \textbf{Cleaning}: Explain why minimal cleaning was needed for reanalysis data.
+    \item \textbf{Regridding}: Interpolation methods for target location alignment.
+    \item \textbf{Feature Engineering}:
+        \begin{itemize}
+            \item Seasonal features (cyclical encoding).
+            \item Calculation of altitude from geopotential.
+            \item Integration of GEBCO elevation and TPI.
+        \end{itemize}
+    \item \textbf{Key Findings}: Visualization of ERA5-Land low-resolution maps.
+    \item \textbf{Metadata that gets preserved}
+\end{itemize}
+}
+
+\section{Model Selection and Implementation}
+\todo{
+\begin{itemize}
+    \item \textbf{Justification}: Why ConvCNP was chosen over traditional interpolation.
+    \item \textbf{Leveraging Vaughan2021}: explain exactly what was changed in their code and why, explain that we are leveraging their model structure, metrics and tooling to build upon
+    \item \textbf{Experimental Setup}: Details on training/validation/test splits and cross-validation holdout sets.
+    \item \textbf{Tech Stack}: Renku, Python, PyTorch, xarray, and Dask.
+\end{itemize}
+}
