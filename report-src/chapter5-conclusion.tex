@@ -1,7 +1,7 @@
 % --- CHAPTER 5: CONCLUSION ---
 \chapter{Conclusion and Future Work}
 \section{Conclusion}
-\todo{Summarize findings: The model is operational, proven to work, and achieves successful prediction cycles.}
+\todo{Summarize findings: The model is operational, proven to work, and achieves successful prediction cycles. Explain what we discovered from varying epoch limit, from ablation, from sparse input prediction.}
 
 \section{Limitations}
 \todo{
@@ -31,6 +31,7 @@
     \item Integration of wind fields, aspect, terrain cover, and humidity.
     \item Exploration of precipitation prediction.
     \item Include year - not relevant if using short periods in training, but more relevant over the course of many decades, to allow climate change to be picked up by the model (glacier melt is a relevant factor).
+    \item Include TPI at different resolution
     \item Include geopotential directly as a channel into the CNN!
     \item Model is notoriously missing any atmospheric data like wind fields. More promising ones: aspect, terrain cover, diurnal cycles, humidity, orographic features
     \item Other avenues for exploration: predicting precipitation (also explored by Vaughan 2021, fully excluded from this project)

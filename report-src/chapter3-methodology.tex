@@ -1,16 +1,63 @@
 % --- CHAPTER 3: METHODOLOGY ---
 \chapter{Methodology}
 \section{Data Acquisition and Description}
-\todo{Review and link the sources, include targets used from MeteoSwiss}
+
+Three primary data sources are used in this project, summarized in Table~\ref{tab:datasets}.
+
+\begin{table}[ht]
+\centering
+\caption{Summary of datasets used in this project.}
+\label{tab:datasets}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Dataset} & \textbf{Role} & \textbf{Format} \\
+\midrule
+ERA5-Land         & Context input      & NetCDF \\
+MeteoSwiss TmaxD  & Ground truth       & NetCDF \\
+Topography        & Elevation features & Zarr \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{ERA5-Land (Context)}
+
+ERA5-Land is the high-resolution land-surface component of the ECMWF ERA5 reanalysis, providing hourly fields on a regular 0.1\textdegree{} latitude--longitude grid from 1950 to the present. Data is downloaded from the Copernicus Climate Data Store as yearly NetCDF files.
+
 \begin{itemize}
-    \item \textbf{Sources}: ERA5-Land (gridded reanalysis) and GEBCO elevation data.
-    \item \textbf{Dataset Details}: Size, dimensions, and data types used for training.
+    \item \textbf{Variables:} daily maximum 2-meter air temperature (\texttt{t2m\_max}) and the static geopotential field (\texttt{z}).
+    \item \textbf{Grid:} 29 latitude $\times$ 61 longitude points over Switzerland (1\,769 cells, $\sim$11\,km spacing).
+    \item \textbf{Temporal ranges:} a single year (2023, 365 days) for rapid iteration, and a ten-year window (2014--2023, $\sim$3\,650 days) for the primary experiments.
 \end{itemize}
 
+The geopotential field is converted to altitude via $h = z / g$, where $g = 9.80665$\,m/s\textsuperscript{2}. This provides the coarse grid-cell elevation used to compute the elevation difference feature (see Section~\ref{sec:feature_engineering}).
+
+\subsection{MeteoSwiss TmaxD v2.0 (Ground Truth)}
+
+The target observations come from the MeteoSwiss gridded temperature product TmaxD v2.0, derived from station observations using spatial interpolation.
+
+\begin{itemize}
+    \item \textbf{Variable:} daily maximum temperature.
+    \item \textbf{Grid:} 240$\times$370 points in the Swiss LV95 coordinate system (EPSG:2056), $\sim$1\,km spacing.
+    \item \textbf{Units:} degrees Celsius, converted to Kelvin to match the ERA5-Land reference frame before normalization.
+    \item \textbf{Coverage:} after flattening, 88\,800 points total, of which a subset are valid (non-NaN) on any given day---points outside the Swiss border are masked.
+\end{itemize}
+
+\subsection{High-Resolution Topography}
+
+Elevation and terrain features are derived from a topography dataset stored in Zarr format on a 25\,m Swiss LV95 grid (12\,800$\times$14\,200 pixels).
+
+\begin{itemize}
+    \item \textbf{DEM}: surface elevation in meters.
+    \item \textbf{TPI\_500M}: Topographic Position Index at a 500\,m radius, quantifying relative elevation compared to the surrounding terrain.
+\end{itemize}
+
+These fields are interpolated to target point locations using bilinear interpolation, after converting target coordinates from WGS84 to the LV95 projection.
+
 \section{Data Preprocessing and Exploration}
+\label{sec:feature_engineering}
 \todo{
 \begin{itemize}
-    \item \textbf{Cleaning}: Explain why minimal cleaning was needed for reanalysis data.
+    \item \textbf{Cleaning}: Explain why minimal cleaning was needed for reanalysis data, .
     \item \textbf{Regridding}: Interpolation methods for target location alignment.
     \item \textbf{Feature Engineering}:
         \begin{itemize}
