@@ -59,7 +59,7 @@ Download and store them in the following folder structure:
       - TminD_ch01r.swiss.lv95_197201010000_197212310000.nc
       - ...
       - TminD_ch01r.swiss.lv95_202301010000_202312310000.nc
-  - topo_subset.zarr (all subfolders with content in zarray format 2)
+  - topo_subset.zarr (swisstopo DHM25, all subfolders with content in zarray format 2)
     - DEM
     - EASTING
     - latitude

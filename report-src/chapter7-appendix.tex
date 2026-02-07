@@ -203,19 +203,90 @@ This notebook loads a trained model and performs comprehensive evaluation:
   \item \textbf{Export.} All metrics are saved to a JSON file for downstream comparison across experiments. All plots are saved to a plots subfolder in the \texttt{trained\_models/<model\_name>} directory.
 \end{enumerate}
 
-\section{Running on Renku}
-\todo{
-\begin{itemize}
-    \item \todo{Document how to set up Renku to run}
-\end{itemize}
+\section{Dataset Expectations}
+\label{sec:dataset-expectations}
+
+The pipeline expects three dataset families stored under a \texttt{datasets/} directory.
+All gridded files are NetCDF; topography is stored as Zarr.
+
+\dirtree{%
+  .1 datasets/.
+  .2 ERA5\_Land/.
+  .3 temperature/ (unused)\DTcomment{\texttt{t2m-\{1960..2023\}.nc}}.
+  .3 max\_temperature/\DTcomment{\texttt{t2m\_max-\{1960..2023\}.nc}}.
+  .3 min\_temperature/ (unused)\DTcomment{\texttt{t2m\_min-\{1960..2023\}.nc}}.
+  .3 precipitation/ (unused)\DTcomment{\texttt{tp-\{1960..2023\}.nc}}.
+  .3 geopotential/\DTcomment{\texttt{era5\_land\_geopotential.nc}}.
+  .2 MeteoSwiss/.
+  .3 TabsD\_v2.0\_swiss.lv95/ (unused)\DTcomment{Daily mean temperature}.
+  .3 TmaxD\_v2.0\_swiss.lv95/\DTcomment{Daily max temperature}.
+  .3 TminD\_v2.0\_swiss.lv95/ (unused)\DTcomment{Daily min temperature}.
+  .3 RhiresD\_v2.0\_swiss.lv95/ (unused)\DTcomment{Daily precipitation}.
+  .2 topo\_subset.zarr/\DTcomment{swisstopo DHM25 derivatives}.
 }
 
-\section{Dataset expectations}
-\todo{
-\begin{itemize}
-    \item Expected folder structure and content
-\end{itemize}
-}
+The folders marked unused were not used in the course of this specific project. All temperature ones can be easily switched in. The precipitation one was not used and because it exposes two distribution parameters, might require additional work to make sure it all is wired through correctly.
+
+\begin{description}
+  \item[ERA5-Land] Reanalysis fields from ECMWF, one NetCDF file per year.
+  The temperature and geopotential files are required; the others are optional depending on the variable being downscaled.
+  Source: \url{https://confluence.ecmwf.int/display/CKB/ERA5-Land:+data+documentation}.
+
+  \item[MeteoSwiss] Gridded ground-truth products on the Swiss LV95 coordinate system, one file per year.
+  Each subfolder contains daily grids at $\approx$1\,km resolution.
+  Source: \url{https://www.meteoswiss.admin.ch}.
+
+  \item[Topography (\texttt{topo\_subset.zarr})] A Zarr store derived from the swisstopo DHM25 digital elevation model.
+  Contains the DEM, coordinates, Topographic Position Index at 500\,m and 2000\,m scales (TPI\_500M, TPI\_2000M), slope derivatives, and valley-norm features.
+\end{description}
+
+Loading is handled by the \texttt{datasets.py} module (Section~\ref{sec:code-structure}), which normalizes the ERA5 fields, converts coordinates between WGS84 and LV95, and interpolates topographic features to station locations. The raw files can also be opened directly with \texttt{xarray} (disrecommended):
+
+\begin{verbatim}
+import xarray as xr
+era5 = xr.open_dataset("datasets/ERA5_Land/temperature/t2m-1960.nc")
+mch  = xr.open_dataset("datasets/MeteoSwiss/TabsD_v2.0_swiss.lv95/"
+         "TabsD_ch01r.swiss.lv95_196101010000_196112310000.nc")
+topo = xr.open_zarr("datasets/topo_subset.zarr")
+\end{verbatim}
+
+\section{Running on Renku}
+\label{sec:running-on-renku}
+
+The training pipeline can run on the Renku cloud platform to take advantage of GPU resources.
+Two setup steps are required: mounting external storage and configuring CUDA.
+
+\subsection{Mounting Datasets and Model Storage via Polybox}
+
+Renku sessions have limited local disk space, so datasets and trained models are stored on ETH Polybox and mounted into the session.
+
+\begin{description}
+  \item[Datasets (read-only).] Place all dataset files (Section~\ref{sec:dataset-expectations}) in a Polybox folder and mount it into the Renku session at a mount-point called \texttt{datasets-mount}, using your ETH credentials.
+  On first use, the training notebook calls \newline \texttt{sync\_from\_cloud\_if\_needed()}, which copies the data from the network mount to the local \texttt{datasets/} directory.
+  Subsequent runs skip files that are already present locally.
+  This local-copy step was necessary because reading NetCDF files directly from the remote mount caused frequent I/O timeouts.
+
+  \item[Trained models (read-write).] Create a second, initially empty Polybox folder and mount it read-write at \texttt{trained-models-mount}.
+  After each cross-validation fold completes, the training notebook calls \texttt{sync\_to\_cloud\_if\_needed()}, which copies checkpoints, parameters, and statistics to the remote mount.
+  This ensures that results are persisted even if the Renku session is terminated.
+\end{description}
+
+When the \texttt{Params.RUN\_TYPE} is set to \texttt{'cloud'} (detected automatically via \texttt{is\_renku()}), the sync functions are activated; when set to \texttt{'local'}, they are no-ops.
+
+\subsection{CUDA Configuration for MIG GPUs}
+
+Renku GPU sessions use NVIDIA Multi-Instance GPU (MIG) partitions.
+PyTorch's CUDA caching allocator has an ``expandable segments'' feature that relies on NVML calls which fail on MIG devices, causing crashes at the first tensor allocation.
+
+To work around this, \texttt{configure\_renku\_cuda()} must be called \emph{before} \texttt{import torch}.
+It sets the environment variable:
+
+\begin{verbatim}
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False,max_split_size_mb:512
+\end{verbatim}
+
+This disables the incompatible allocator feature and caps the maximum split size to avoid memory fragmentation.
+Both training and prediction notebooks call this function in their first cell, before any other PyTorch import.
 
 \section{Training and predicting}
 \todo{
