@@ -21,7 +21,6 @@ class Params:
                                         # Used for quicker testing
 
     # Ablation parameters
-    GEOPOTENTIAL_IN_CNN: bool = True
     SEASONAL_FEATURES: bool = True  # Whether to include seasonal features (cos/sin of day-of-year) at all
     SEASONAL_FEATURES_IN_MLP: bool = True  # Whether to include seasonal features (cos/sin of day-of-year) in elevation MLP
     USE_ELEVATION: bool  = True  # Whether to include the elevation maps

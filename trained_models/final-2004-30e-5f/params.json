@@ -1,7 +1,6 @@
 {
     "VARIABLE": "tmax",
     "DATA_YEAR_START": 2004,
-    "GEOPOTENTIAL_IN_CNN": false,
     "SEASONAL_FEATURES": true,
     "SEASONAL_FEATURES_IN_MLP": true,
     "USE_ELEVATION": true,
