@@ -46,7 +46,13 @@ Populate this
 
     \item[Context set] The collection of input observations (locations and their associated values) provided to a Neural Process at inference time. In this project, the context set consists of ERA5-Land grid points with their temperature values and auxiliary features.
 
+    \item[Density channel] An auxiliary channel in the ConvCNP's set convolution output that records the observation density at each grid cell. It informs the CNN about where context data is present and where it is absent, allowing the model to increase uncertainty in data-sparse regions.
+
     \item[Downscaling (statistical)] The process of deriving high-resolution local predictions from coarse-resolution gridded data by learning statistical relationships between large-scale fields and local observations, as opposed to dynamical downscaling which runs a high-resolution physics-based model.
+
+    \item[Gaussian Process (GP)] A stochastic process in which any finite collection of random variables follows a multivariate Gaussian distribution, fully specified by a mean function and a covariance (kernel) function. GPs provide analytically tractable uncertainty estimates but scale as $\mathcal{O}(N^3)$ with the number of observations, which limits their applicability to large spatial datasets.
+
+    \item[Lapse rate] The rate at which air temperature decreases with increasing altitude. The standard environmental lapse rate is approximately 6.5\,\textdegree C per 1000\,m, but actual lapse rates vary with season, weather conditions, and local topography (e.g.\ temperature inversions in winter valleys).
 
     \item[Meta-learning] A learning paradigm in which a model is trained across a distribution of tasks so that it learns not a single fixed function, but a \textit{family} of functions---captured as a predictive distribution conditioned on context. Each task corresponds to a different context--target split (e.g.\ a different day's weather). At inference time, the model conditions on a novel context set and produces a full predictive distribution over target values, without requiring retraining. Exposing the uncertainty allows the model training to minimize calibration error. See \textit{Uncertainty calibration} below.
 

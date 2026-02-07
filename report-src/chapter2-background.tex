@@ -1,11 +1,75 @@
 % --- CHAPTER 2: BACKGROUND ---
 \chapter{Background}
 \section{Theoretical Foundations}
-\todo{Summarize fundamental concepts:
-\begin{itemize}
-    \item Conditional Neural Processes (CNP) and Neural Process (NP) family.
-    \item Convolutional Neural Processes (ConvNP) and Convolutional Conditional Neural Processes (CCNP).
-\end{itemize}}
+
+This section introduces the Neural Process family of models, building from the foundational ideas to the specific architecture used in this project.
+
+\subsection{From Gaussian Processes to Neural Processes}
+
+Gaussian Processes (GPs) are a classical tool for spatial interpolation. A GP defines a distribution over functions: given a set of observed input--output pairs, it produces a predictive distribution at new locations that is analytically tractable and naturally uncertainty-aware. However, GPs scale poorly with the number of observations---exact inference is $\mathcal{O}(N^3)$ in the number of context points---and encoding complex, nonlinear relationships requires careful kernel engineering.
+
+Neural Processes (NPs), introduced by Garnelo et al.\ (2018), were designed to combine the strengths of GPs and neural networks. Like a GP, an NP defines a conditional distribution over functions given a context set. Like a neural network, it learns flexible representations from data and scales efficiently at inference time. The key idea is meta-learning: the model is trained on many tasks (each a different context--target split drawn from a data-generating process), so that it learns to map any context set to a predictive distribution over target values in a single forward pass, without the costly matrix inversions of GPs.
+
+\subsection{Conditional Neural Processes}
+
+The Conditional Neural Process (CNP), also introduced by Garnelo et al.\ (2018), is the simplest member of the NP family. Given a context set $\{(\mathbf{x}_i, y_i)\}_{i=1}^{N_C}$, a CNP:
+%
+\begin{enumerate}
+    \item \textbf{Encodes} each context pair independently through a shared encoder network $h_\theta$, producing a representation $\mathbf{r}_i = h_\theta(\mathbf{x}_i, y_i)$;
+    \item \textbf{Aggregates} the individual representations into a single, fixed-size summary $\mathbf{r} = \frac{1}{N_C}\sum_{i=1}^{N_C} \mathbf{r}_i$ via a permutation-invariant operation (mean pooling);
+    \item \textbf{Decodes} at each target location $\mathbf{x}^*$ by passing $[\mathbf{r},\, \mathbf{x}^*]$ through a decoder network that outputs the parameters of a predictive distribution.
+\end{enumerate}
+%
+The CNP is trained by maximizing the log-likelihood of the target observations under the predicted distributions, across many tasks. Because each task presents a different context set, the model learns to condition on arbitrary observation configurations---the hallmark of meta-learning.
+
+A limitation of the CNP is that the global aggregation step compresses all spatial information into a single vector $\mathbf{r}$, which can be a bottleneck when the underlying function has rich spatial structure. The Attentive Neural Process (ANP), proposed by Kim et al.\ (2019), addresses this by using attention mechanisms to produce target-specific representations, but at increased computational cost.
+
+\subsection{Convolutional Conditional Neural Processes}
+
+The Convolutional Conditional Neural Process (ConvCNP), introduced by Gordon et al.\ (2020), takes a different approach to preserving spatial structure. Instead of aggregating context into a global vector, the ConvCNP places the context observations onto a discretized grid using a \textit{set convolution}---a continuous convolution that smoothly maps irregularly spaced observations to a regular lattice. This gridded representation is then processed by a standard convolutional neural network (CNN), which is naturally suited to extracting spatial features at multiple scales.
+
+The architecture consists of three stages:
+%
+\begin{enumerate}
+    \item \textbf{Set convolution (Encoder):} Each context observation $(\mathbf{x}_i, y_i)$ contributes to the grid through a kernel centered at $\mathbf{x}_i$. A parallel \textit{density channel} tracks the observation density at each grid cell, providing the model with information about where context data is available and where it is absent. The result is a multi-channel gridded input to the CNN.
+
+    \item \textbf{CNN (Processor):} A deep convolutional network---typically a ResNet with skip connections---processes the gridded representation. Because convolutions are translation-equivariant, the CNN treats all spatial locations consistently: a weather pattern produces the same learned features regardless of where it occurs in the domain.
+
+    \item \textbf{Decoder:} At each target location, the CNN output is interpolated and passed through a decoder that outputs the parameters of the predictive distribution. In the variant used in this project, the decoder is a multi-layer perceptron (MLP) that also accepts location-specific auxiliary features (e.g.\ elevation), enabling the model to correct for local effects that the coarse CNN representation cannot capture.
+\end{enumerate}
+
+The ConvCNP's translation equivariance is a key inductive bias for spatial problems: it encodes the prior knowledge that physical laws do not depend on absolute position. Combined with the set convolution's ability to handle arbitrary and variable-size context sets, this makes the ConvCNP well suited to weather downscaling, where the context may be a regular reanalysis grid, a sparse station network, or anything in between.
 
 \section{Related Work}
-\todo{Cover existing research, focusing on \textit{Vaughan et al. (2021)}. Identify dependencies and explain how this project expands upon their work (e.g., specific feature sets or regional focus).}
+
+\subsection{Vaughan et al.\ (2021): ConvCNPs for Climate Downscaling}
+
+Vaughan et al.\ (2021) were the first to apply ConvCNPs to the problem of climate downscaling, demonstrating the approach for temperature and precipitation over the United Kingdom. Their work used ERA5 reanalysis data (at approximately 27\,km resolution) as context, with ground-truth observations from the VALUE station network as targets. The model included multiple ERA5 channels---temperature, pressure, humidity, wind components, and geopotential---providing a rich atmospheric context. Notably, geopotential (directly related to altitude) was included as a CNN input channel, meaning the convolutional backbone itself was not elevation-agnostic.
+
+Their results showed that ConvCNPs could match or exceed the performance of established statistical and dynamical downscaling baselines, while providing well-calibrated uncertainty estimates and requiring no hand-crafted feature engineering beyond the choice of input channels. The accompanying open-source codebase provided implementations of the encoder, CNN, MLP decoder, training loop, and evaluation metrics.
+
+\subsection{How This Project Extends Vaughan et al.}
+
+This project builds directly on the Vaughan et al.\ (2021) codebase and methodology, adapting and extending it for a new geographic domain and research focus. The key differences are summarized below.
+
+\paragraph{Geographic domain.} The study area shifts from the relatively flat UK mainland (elevation range 0--1000\,m) to Alpine Switzerland (elevation range approximately 180--4675\,m). The extreme topographic complexity of the Swiss Alps---where elevation can change by over 1000\,m within a few kilometers---presents a substantially harder downscaling challenge and makes elevation-aware modeling essential.
+
+\paragraph{Input data: ERA5-Land.} Where Vaughan et al.\ used ERA5 at $\sim$27\,km resolution, this project uses ERA5-Land at 0.1\textdegree{} ($\sim$11\,km) resolution. ERA5-Land is the ECMWF's high-resolution land-surface reanalysis, providing finer spatial detail over terrestrial areas. To keep the exploration focused and due to the limited duration of the capstone project, a reduced set of input channels is used: normalized 2-meter maximum temperature, latitude, longitude, and cyclical day-of-year encodings (cosine and sine), for a total of five CNN input channels.
+
+\paragraph{Target data: MeteoSwiss observational grid.} Rather than predicting at scattered station locations, this project targets the MeteoSwiss gridded observational product (TmaxD v2.0), which provides daily maximum temperature on a regular 240$\times$370 grid in the Swiss LV95 coordinate system. This dense target grid enables spatially comprehensive evaluation but requires coordinate transformations between the WGS84 system of ERA5-Land and the Swiss LV95 projection.
+
+\paragraph{Elevation handling and the missing geopotential channel.} Vaughan et al.\ included geopotential---directly related to altitude---as one of the CNN input channels, meaning their convolutional backbone was not elevation-agnostic (despite the paper mentioning it is, likely a description that stayed from an earlier version of the model). This was not initially recognized during the development of the present project, and as a result geopotential was \textit{not} included as a CNN channel. Had this been noticed earlier, it would have been included to achieve parity. This omission is acknowledged as a regression: the CNN in this project lacks direct elevation awareness at the grid level, placing a greater burden on the downstream MLP to compensate.
+
+That said, the project does provide elevation information to the model through a dedicated MLP pathway. The MLP receives the CNN's base prediction together with three high-resolution topographic features computed at each target location:
+%
+\begin{itemize}
+    \item \textbf{True elevation}: interpolated from a 25\,m-resolution digital elevation model (DEM);
+    \item \textbf{Elevation difference}: the difference between the true elevation and the ERA5-Land grid cell elevation, capturing the local altitude mismatch that the coarse grid cannot resolve;
+    \item \textbf{Topographic Position Index (TPI)}: a measure of relative elevation compared to the surrounding terrain at a 500\,m scale, indicating whether a location sits on a ridge, in a valley, or on a slope.
+\end{itemize}
+%
+While this MLP-based correction allows the model to account for local topographic effects at high resolution, it cannot fully replace the spatial elevation context that a CNN channel would provide. Including geopotential as a CNN channel remains a clear avenue for improvement (see Chapter~5).
+
+\paragraph{Explicit seasonal encoding.} In addition to the cyclical day-of-year features in the CNN input channels, the same seasonal features are optionally passed directly to the elevation MLP. This enables the MLP to learn season-dependent lapse rates---for instance, steeper temperature gradients with altitude in summer versus temperature inversions in winter valleys---without relying solely on the CNN to propagate this information.
+
+\paragraph{Focus on operationalization.} Beyond model accuracy, this project investigates practical deployment considerations: how the model performs with progressively sparser context data, the relative importance of individual input features (via ablation studies), and the skill gained over simple ERA5-Land interpolation. These questions are directly relevant to assessing whether ConvCNPs can be operationalized for routine downscaling in data-sparse regions.
