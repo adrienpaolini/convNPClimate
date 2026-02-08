@@ -386,12 +386,190 @@ Outputs are written to \texttt{trained\_models/<MODEL\_NAME>/}:
   One file is produced per prediction run, enabling programmatic comparison across experiments and sparsity levels.
 \end{description}
 
-\section{How to add new features to the model}
-\todo{\begin{itemize}
-    \item Tutorial: Adding new channels/features to the ConvCNP or MLP.
-        \subitem use seasonal features as an example for both
-\end{itemize}
-}
+\section{How to Add New Features to the Model}
+\label{sec:adding-features}
+
+The model has three distinct extension points for new input features, each with a different data shape and code path.
+This section walks through each one, using the seasonal and topographic features already in the codebase as concrete examples.
+
+\subsection{Extension Point 1: CNN Input Channels}
+
+CNN channels are \emph{gridded, per-timestep} features that share the ERA5 spatial grid (29$\times$61).
+They flow through the set convolution encoder and the ResNet decoder, giving the CNN spatial context about each feature.
+The seasonal cosine and sine encodings were added this way.
+
+\paragraph{What to change.}
+
+\begin{enumerate}
+  \item \textbf{\texttt{datasets.py}, \texttt{load\_era5\_data()}.}
+  Compute the new feature as a tensor of shape \texttt{(time, lat, lon)} and append it to \texttt{channel\_list} before the final concatenation.
+  For seasonal features, this is where $\cos(2\pi d/365)$ and $\sin(2\pi d/365)$ are broadcast to the full grid and appended as channels~4 and~5:
+
+\begin{verbatim}
+  # datasets.py, inside load_era5_data()
+  cos_time = np.cos(time_rads)
+  sin_time = np.sin(time_rads)
+  cos_channel, sin_channel, _ = xr.broadcast(
+      cos_time, sin_time, norm_data)
+
+  channel_list = [norm_data, lat_channel, lon_channel]
+  if include_seasonal_embeddings:
+      channel_list.extend([cos_channel, sin_channel])
+
+  tensor_Z = xr.concat(channel_list, dim="channel")
+\end{verbatim}
+
+  \item \textbf{Everything else adapts automatically.}
+  The training notebook calls \texttt{PARAMS.with\_in\_channels(tensor.shape[1])} after loading, so \texttt{IN\_CHANNELS} updates to reflect the new channel count.
+  \texttt{model\_factory} passes it to the model constructor, and the encoder's linear layer (\texttt{nn.Linear(in\_channels*2, 128)}) adapts to the new width at initialization.
+\end{enumerate}
+
+No changes are needed in \texttt{params.py}, \texttt{model\_factory.py}, \texttt{encoder.py}, or \texttt{elev\_models.py}---the encoder is parameterized by \texttt{in\_channels} and adjusts automatically.
+
+\subsection{Extension Point 2: Elevation MLP Features (Per-Location)}
+
+Per-location features are \emph{static vectors attached to each target point}, such as the true elevation, the elevation difference from the ERA5 grid cell, and the Topographic Position Index.
+They are concatenated with the CNN's base prediction ($\mu$, $\sigma$) and passed through the elevation MLP.
+Because they are per-point rather than gridded, they can use data at much higher resolution than the ERA5 grid.
+
+\paragraph{What to change (using mTPI as the example).}
+
+\begin{enumerate}
+  \item \textbf{\texttt{datasets.py}, \texttt{load\_high\_res\_topography()}.}
+  Load the new raster (e.g.\ slope or aspect) from the Zarr store and return it alongside the DEM and TPI. (If this is an entirely separate feature, load if from the appropriate store separately.)
+
+  \item \textbf{\texttt{datasets.py}, \texttt{prepare\_meteoswiss\_targets()}.}
+  Interpolate the new raster to each target point's LV95 coordinates (bilinear), then append it to the feature stack.
+  Currently the stack is \texttt{[true\_elev, elev\_diff, mTPI]}, giving a tensor of shape \texttt{(n\_points, 3)}.
+  Adding a fourth feature changes this to \texttt{(n\_points, 4)}.
+  Here is how mTPI was added:
+
+\begin{verbatim}
+  # datasets.py, inside prepare_meteoswiss_targets()
+  if hi_res_tpi is not None:
+      tpi = hi_res_tpi.interp(
+          x=xr.DataArray(target_x_lv95, dims='point'),
+          y=xr.DataArray(target_y_lv95, dims='point'),
+          method='linear')
+  else:
+      tpi = xr.zeros_like(true_elev)
+
+  tensor_e = xr.concat(
+      [true_elev, elev_diff, tpi], dim="feature")
+\end{verbatim}
+
+  \item \textbf{\texttt{convCNP/models/elev\_models.py}.}
+  Update the MLP input width.
+  The elevation MLP input size is currently computed as:
+  %
+  \[
+    \underbrace{2}_{\mu,\,\sigma} + \underbrace{3}_{\text{elev features}} + \underbrace{2}_{\text{seasonal (if enabled)}} = 7
+  \]
+  %
+  Adding one elevation feature changes the 3 to a 4, so the MLP input width becomes 8 (or 6 without seasonal).
+
+  This is set in the \texttt{\_\_init\_\_} of \texttt{TmaxBiasConvCNPElev} (and \texttt{GammaBiasConvCNPElev} for precipitation):
+
+\begin{verbatim}
+  # convCNP/models/elev_models.py, TmaxBiasConvCNPElev.__init__()
+  # 2 (mu, sigma) + 3 (elev features) + 2 (seasonal) = 7
+  elev_mlp_in_channels = 7 if use_seasonal_in_mlp else 5
+  self.elev_mlp = MLP(elev_mlp_in_channels, 2,
+      hidden_channels=64, hidden_layers=4)
+\end{verbatim}
+
+  No changes are needed in the \texttt{forward()} method---the concatenation already uses the full elevation tensor regardless of its width.
+
+  \item \textbf{\texttt{params.py}.}
+  Optionally add an ablation flag (e.g.\ \texttt{USE\_SLOPE} if you were adding slope derivative) so the feature can be toggled on and off for experiments.
+  Pass it through to \newline \texttt{prepare\_meteoswiss\_targets()} and \texttt{elev\_models.py}.
+\end{enumerate}
+
+\subsection{Extension Point 3: Elevation MLP Features (Per-Timestep)}
+
+Per-timestep features are \emph{scalars that vary by day but are the same for all target points}, such as the seasonal cosine and sine encodings.
+At inference time they are broadcast (expanded) to every target point before concatenation with the base prediction and elevation features.
+
+\paragraph{What to change (using seasonal features as the example).}
+
+\begin{enumerate}
+  \item \textbf{\texttt{datasets.py}, \texttt{compute\_seasonal\_features()}.}
+  Compute the new feature as a tensor of shape \texttt{(n\_times, n\_features)}.
+  For seasonal features (day of year, doy) this is \texttt{(n\_times, 2)} containing $[\cos(\text{doy}),\, \sin(\text{doy})]$:
+
+\begin{verbatim}
+  # datasets.py, compute_seasonal_features()
+  times_pd = pd.to_datetime(time_coords)
+  day_of_year = times_pd.dayofyear.values
+  time_rads = (day_of_year - 1) / 365.0 * 2 * np.pi
+
+  cos_doy = np.cos(time_rads)
+  sin_doy = np.sin(time_rads)
+
+  seasonal = np.stack([cos_doy, sin_doy], axis=1)  # (n_times, 2)
+  return torch.tensor(seasonal, dtype=torch.float32, device=device)
+\end{verbatim}
+
+  \item \textbf{Training notebook.}
+  Compute the feature after loading time coordinates and pass it as the \texttt{seasonal} argument to \texttt{train\_elev()}.
+  If the feature should coexist with seasonal features, concatenate them into a single tensor before passing.
+
+\begin{verbatim}
+  # training_notebook.ipynb, after loading ERA5 data
+  if PARAMS.SEASONAL_FEATURES_IN_MLP:
+      seasonal_features = ds.compute_seasonal_features(
+          time_coords, device=device)
+  else:
+      seasonal_features = None
+
+  # Later, in the training loop:
+  train_elev(..., seasonal=seasonal_features, ...)
+\end{verbatim}
+
+  \item \textbf{\texttt{convCNP/training/utils.py}, \texttt{get\_fold\_data()}.}
+  Already handles splitting, shuffling, and batching the \texttt{seasonal} tensor by fold.
+  No changes needed unless a separate parameter is introduced.
+
+  \item \textbf{\texttt{convCNP/models/elev\_models.py}.}
+  In \texttt{forward()}, per-timestep features are expanded from \texttt{(batch, n\_features)} to \texttt{(batch, n\_points, n\_features)} and concatenated along the feature dimension.
+  Update the MLP input width as described above (the seasonal contribution changes from 2 to 2 + $n_{\text{new}}$).
+  Here is how the broadcast and concatenation work in \texttt{forward()}:
+
+\begin{verbatim}
+  # convCNP/models/elev_models.py, TmaxBiasConvCNPElev.forward()
+  elev_expanded = elev.repeat(batch_size, 1, 1)  # (batch, n_points, 3)
+
+  if self.use_seasonal_in_mlp and seasonal is not None:
+      # seasonal: (batch, 2) -> (batch, n_points, 2)
+      seasonal_expanded = seasonal.unsqueeze(1).expand(
+          -1, n_points, -1)
+      out = torch.cat(
+          [out, elev_expanded, seasonal_expanded], dim=2)
+  else:
+      out = torch.cat([out, elev_expanded], dim=2)
+
+  out = self.elev_mlp(out)
+\end{verbatim}
+\end{enumerate}
+
+\subsection{Summary}
+
+Table~\ref{tab:extension-points} summarizes the three extension points and the files that require modification.
+
+\begin{table}[ht]
+\centering
+\caption{Extension points for adding new features.}
+\label{tab:extension-points}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Extension point} & \textbf{Shape} & \textbf{Example} & \textbf{Files to modify} \\
+\midrule
+CNN channel        & (time, lat, lon)    & cos/sin of doy       & \texttt{datasets.py} only \\
+MLP per-location   & (n\_points, $k$)    & elevation, mTPI      & \texttt{datasets.py}, \texttt{elev\_models.py} \\
+MLP per-timestep   & (n\_times, $k$)     & seasonal encoding    & \texttt{datasets.py}, \texttt{elev\_models.py} \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \section{Glossary of Terms}
 
