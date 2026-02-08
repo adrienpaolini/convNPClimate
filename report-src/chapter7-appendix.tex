@@ -571,6 +571,122 @@ MLP per-timestep   & (n\_times, $k$)     & seasonal encoding    & \texttt{datase
 \end{tabular}
 \end{table}
 
+% --- OUT-OF-GRID: Non-gridded station input ---
+\section{Considerations on supporting non-gridded station input}
+\label{sec:out-of-grid}
+
+\subsection{The Architectural Constraint}
+
+The model's data flow is:
+
+\begin{verbatim}
+Gridded context (batch, channels, lat, lon)
+  -> Encoder (Conv2d)            <- gridded assumption
+  -> CNN decoder (Conv2d)        <- gridded assumption
+  -> MLP (per grid-cell)
+  -> RBF kernel (grid -> points) <- targets already off-grid
+  -> Elevation MLP
+  -> Point predictions
+\end{verbatim}
+
+The gridded assumption lives in the encoder and CNN decoder, which use \texttt{Conv2d}. The output side already handles off-the-grid targets via the RBF kernel. The ConvCNP paper \cite{vaughan2022} uses ERA5 gridded reanalysis as context, which is naturally gridded data. The architecture handles off-the-grid \emph{targets} natively, but the \emph{context} (input) side is where the constraint lies.
+
+The question is therefore how to get non-gridded station data into the CNN pipeline.
+
+\subsection{Current State: Snap-to-Grid for Prediction}
+
+For prediction only (not training), a snap-to-grid approach is already implemented. The inference path works as follows:
+
+\begin{enumerate}
+    \item \texttt{find\_nearest\_era5\_indices} maps station coordinates to their nearest ERA5 grid cells.
+    \item \texttt{build\_sparse\_context} places station values at those grid cells and fills unobserved cells with NaN.
+    \item \texttt{predict\_single\_day} derives a binary mask from the NaN pattern (non-NaN $=$ observed, NaN $=$ unobserved) and runs the forward pass.
+\end{enumerate}
+
+This means a model trained on full ERA5 grids can be used at inference time with a sparse station-derived context, without any model changes.
+
+\paragraph{Limitations of snap-to-grid.}
+\begin{itemize}
+    \item Loses sub-grid station positioning (stations are rounded to the nearest cell). In Switzerland, a single kilometre can correspond to a very high change in elevation, making this a severe limitation.
+    \item Multiple stations falling in the same cell are averaged.
+    \item With very sparse station networks, the $5 \times 5$ encoder kernel may not propagate information far enough (only ${\sim}2$ grid cells of reach).
+    \item The model has only been trained on dense grids, so prediction quality with very sparse context suffers significantly.
+\end{itemize}
+
+\subsection{Options to Replace Snap-to-Grid}
+
+The following options would require additional implementation work, either to improve input quality without model changes or to modify the model architecture itself.
+
+\subsubsection{Option 1: True Set Convolution Encoder (ConvCNP-Native)}
+
+The original ConvCNP formalism \cite{gordon2019} maps scattered points to a grid representation using a \textbf{set convolution}---essentially the reverse of what the final layer already does. This produces a gridded representation that the existing CNN decoder can consume without modification.
+
+The current encoder does something conceptually similar (depthwise convolution with density normalization), but using \texttt{Conv2d}, which requires the input to already be on the grid. Replacing it with a kernel-based set convolution that takes station locations and values directly would architecturally clean. This would require rewriting the encoder.
+
+\paragraph{Pros.}
+\begin{itemize}
+    \item Stays within the ConvCNP framework.
+    \item Preserves exact station locations and handles arbitrary station counts.
+    \item The rest of the pipeline (CNN, final layer, elevation MLP) remains unchanged.
+    \item Translation equivariance is preserved.
+\end{itemize}
+
+\paragraph{Cons.}
+\begin{itemize}
+    \item Set convolution is $\mathcal{O}(N_{\text{stations}} \times N_{\text{grid}})$ per forward pass rather than the efficient \texttt{Conv2d}.
+\end{itemize}
+
+\subsubsection{Option 2: Attention-Based Encoder or Graph Neural Network}
+
+Use AttentiveCNP or a graph neural network (GNN) where stations are nodes and edges connect nearby stations. This is a significant architectural change.
+
+\paragraph{Pros.}
+\begin{itemize}
+    \item Natively handles irregular inputs.
+    \item Attention can focus on the most relevant stations for each prediction.
+\end{itemize}
+
+\paragraph{Cons.}
+\begin{itemize}
+    \item Loses translation equivariance, a key property of the ConvCNP framework.
+    \item Attention is $\mathcal{O}(n^2)$ in the number of stations---this will not scale if using massive grids as training input and may require smart approaches (e.g. subsampling).
+\end{itemize}
+
+\subsubsection{Option 3: Pre-Interpolate to a full higher-resolution grid}
+
+Use an external spatial interpolation method (kriging, optimal interpolation, inverse distance weighting, thin-plate splines) to produce a complete gridded field from station data, then feed it into the model unchanged.
+
+\paragraph{Pros.}
+\begin{itemize}
+    \item No model changes required.
+    \item Produces a dense grid the CNN works with natively.
+    \item Well-understood classical methods are available.
+\end{itemize}
+
+\paragraph{Cons.}
+\begin{itemize}
+    \item Interpolation error propagates into the model with no way to account for it.
+    \item Uncertainty about data-sparse regions is lost.
+\end{itemize}
+
+\subsubsection{Option 4: Dual-Stream Architecture}
+
+If some gridded auxiliary predictors are available (e.g.\ ERA5-Local, etc) alongside station observations, keep the existing CNN path for the gridded data but add a parallel point-data encoder (set convolution or attention-based) for the station values. Fuse the two representations on the grid before the decoder.
+
+\paragraph{Pros.}
+\begin{itemize}
+    \item Leverages gridded reanalysis where available.
+    \item Does not discard information from either source.
+\end{itemize}
+
+\paragraph{Cons.}
+\begin{itemize}
+    \item More complex architecture.
+    \item Need to design the fusion strategy.
+    \item Two encoder branches to train.
+\end{itemize}
+
+
 \section{Glossary of Terms}
 
 \begin{description}
