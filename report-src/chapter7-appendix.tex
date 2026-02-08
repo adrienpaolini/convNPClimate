@@ -32,7 +32,7 @@ The repository is organized as follows:
 
 \subsection{Original Vaughan Code (\texttt{convCNP/})}
 
-The \texttt{convCNP/} directory contains the core ConvCNP implementation from Vaughan et al.~2022, with minimal modifications on our part (highlighted below, and all diffs in repo at \url{https://github.com/franciscopassos/convNPClimate/blob/master/convcnp-diffs.txt}).
+The \texttt{convCNP/} directory contains the core ConvCNP implementation from \citet{vaughan2022}, with minimal modifications on our part (highlighted below, and all diffs in repo at \url{https://github.com/franciscopassos/convNPClimate/blob/master/convcnp-diffs.txt}).
 Its internal structure is as follows:
 
 \begin{description}
@@ -589,7 +589,7 @@ Gridded context (batch, channels, lat, lon)
   -> Point predictions
 \end{verbatim}
 
-The gridded assumption lives in the encoder and CNN decoder, which use \texttt{Conv2d}. The output side already handles off-the-grid targets via the RBF kernel. The ConvCNP paper \cite{vaughan2022} uses ERA5 gridded reanalysis as context, which is naturally gridded data. The architecture handles off-the-grid \emph{targets} natively, but the \emph{context} (input) side is where the constraint lies.
+The gridded assumption lives in the encoder and CNN decoder, which use \texttt{Conv2d}. The output side already handles off-the-grid targets via the RBF kernel. The ConvCNP paper \citep{vaughan2022} uses ERA5 gridded reanalysis as context, which is naturally gridded data. The architecture handles off-the-grid \emph{targets} natively, but the \emph{context} (input) side is where the constraint lies.
 
 The question is therefore how to get non-gridded station data into the CNN pipeline.
 
@@ -619,7 +619,7 @@ The following options would require additional implementation work, either to im
 
 \subsubsection{Option 1: True Set Convolution Encoder (ConvCNP-Native)}
 
-The original ConvCNP formalism \cite{gordon2019} maps scattered points to a grid representation using a \textbf{set convolution}---essentially the reverse of what the final layer already does. This produces a gridded representation that the existing CNN decoder can consume without modification.
+The original ConvCNP formalism \citep{gordon2019} maps scattered points to a grid representation using a \textbf{set convolution}---essentially the reverse of what the final layer already does. This produces a gridded representation that the existing CNN decoder can consume without modification.
 
 The current encoder does something conceptually similar (depthwise convolution with density normalization), but using \texttt{Conv2d}, which requires the input to already be on the grid. Replacing it with a kernel-based set convolution that takes station locations and values directly would architecturally clean. This would require rewriting the encoder.
 

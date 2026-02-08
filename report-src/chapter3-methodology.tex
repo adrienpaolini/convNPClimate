@@ -21,7 +21,7 @@ swisstopo DHM25   & Elevation features & Zarr \\
 
 \subsection{ERA5-Land (Context)}
 
-ERA5-Land is the high-resolution land-surface component of the ECMWF ERA5 reanalysis, providing hourly fields on a regular 0.1\textdegree{} latitude--longitude grid from 1950 to the present. Data is downloaded from the Copernicus Climate Data Store as yearly NetCDF files.
+ERA5-Land \citep{era5land} is the high-resolution land-surface component of the ECMWF ERA5 reanalysis, providing hourly fields on a regular 0.1\textdegree{} latitude--longitude grid from 1950 to the present. Data is downloaded from the Copernicus Climate Data Store as yearly NetCDF files.
 
 \begin{itemize}
     \item \textbf{Variables:} daily maximum 2-meter air temperature (\texttt{t2m\_max}) and the static geopotential field (\texttt{z}).
@@ -33,7 +33,7 @@ The geopotential field is converted to altitude via $h = z / g$, where $g = 9.80
 
 \subsection{MeteoSwiss TmaxD v2.0 (Ground Truth)}
 
-The target observations come from the MeteoSwiss gridded temperature product TmaxD v2.0, derived from station observations using spatial interpolation.
+The target observations come from the MeteoSwiss gridded temperature product TmaxD v2.0 \citep{meteoswiss_tmax}, derived from station observations using spatial interpolation.
 
 \begin{itemize}
     \item \textbf{Variable:} daily maximum temperature.
@@ -44,7 +44,7 @@ The target observations come from the MeteoSwiss gridded temperature product Tma
 
 \subsection{swisstopo DHM25 high-Resolution Topography}
 
-Elevation and terrain features are derived from the swisstopo DHM25 (Digital Height Model), stored locally in Zarr format on a 25\,m Swiss LV95 grid (12\,800$\times$14\,200 pixels). The dataset includes pre-computed terrain derivatives.
+Elevation and terrain features are derived from the swisstopo DHM25 \citep{dhm25} (Digital Height Model), stored locally in Zarr format on a 25\,m Swiss LV95 grid (12\,800$\times$14\,200 pixels). The dataset includes pre-computed terrain derivatives.
 
 \begin{itemize}
     \item \textbf{DEM}: surface elevation in meters.
@@ -171,11 +171,11 @@ The downscaling task can be approached with methods ranging from bilinear interp
     \item \textbf{End-to-end learning.} All components are jointly trained by maximizing the log-likelihood of target observations, learning optimal internal representations directly from data.
 \end{enumerate}
 
-\subsection{Leveraging Vaughan et al.\ (2022)}
+\subsection[Leveraging Vaughan et al. (2022)]{Leveraging \citet{vaughan2022}}
 
-This project builds on the open-source ConvCNP implementation of Vaughan et al.\ (2022), which provided the encoder, ResNet decoder, MLP, training loop, loss functions, and evaluation metrics. Several elements had been adapted from Dubois' Neural Process repository, notably the \texttt{ProbabilityConverter} and depth-separable convolution blocks.
+This project builds on the open-source ConvCNP implementation of \citet{vaughan2022} \citep{vaughan2022code}, which provided the encoder, ResNet decoder, MLP, training loop, loss functions, and evaluation metrics. Several elements had been adapted from Dubois' Neural Process repository \citep{dubois2020npf}, notably the \texttt{ProbabilityConverter} and depth-separable convolution blocks.
 
-Starting from this base, very few modifications were made to the code from Vaughan et al.\ (2022); a detailed list is included in the Appendix. Those python modules were used to build a separate set of libraries and tooling to adapt the model to the Swiss domain:
+Starting from this base, very few modifications were made to the code from \citet{vaughan2022}; a detailed list is included in the Appendix. Those python modules were used to build a separate set of libraries and tooling to adapt the model to the Swiss domain:
 
 \begin{itemize}
     \item WGS84/LV95 coordinate handling;
@@ -186,7 +186,7 @@ Starting from this base, very few modifications were made to the code from Vaugh
 \subsection{Architecture Overview}
 \label{sec:architecture_overview}
 
-The temperature downscaling model (\texttt{TmaxBiasConvCNPElev}, from Vaughan et al.\ (2022)) consists of four sequential stages:
+The temperature downscaling model (\texttt{TmaxBiasConvCNPElev}, from \citet{vaughan2022}) consists of four sequential stages:
 
 \begin{enumerate}
     \item \textbf{Encoder (set convolution).} Maps the context tensor and a binary mask onto a representation per grid cell using convolutions (kernel size 5).
@@ -225,7 +225,7 @@ The dataset is split temporally: a 5-fold scheme divides the time series into co
 
 \subsubsection{Hyperparameters}
 
-Table~\ref{tab:hyperparams} summarizes the hyperparameters. Values marked $\dagger$ follow Vaughan et al.\ (2022).
+Table~\ref{tab:hyperparams} summarizes the hyperparameters. Values marked $\dagger$ follow \citet{vaughan2022}.
 
 \begin{table}[ht]
 \centering
@@ -373,7 +373,7 @@ The project is implemented in Python on the following stack:
     \item \textbf{xarray} and \textbf{Dask} for lazy-loading and processing of NetCDF/Zarr datasets.
     \item \textbf{pyproj} for WGS84\,/\,LV95 coordinate transformations.
     \item \textbf{scipy} and \textbf{scikit-learn} for evaluation metrics and preprocessing.
-    \item \textbf{Renku} (SDSC) for reproducible environments, GPU cloud sessions (NVIDIA MIG partitions), and version control.
+    \item \textbf{Renku} \citep{renku} (SDSC) for reproducible environments, GPU cloud sessions (NVIDIA MIG partitions), and version control.
 \end{itemize}
 
 Reproducibility is enforced by seeding all random number generators (Python, NumPy, PyTorch, CUDA) with a fixed seed and setting \texttt{cudnn.deterministic=True}.

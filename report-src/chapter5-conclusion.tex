@@ -3,7 +3,7 @@
 
 \section{Conclusion}
 
-This project set out to assess whether Convolutional Conditional Neural Processes---originally demonstrated for UK climate downscaling by Vaughan et al.\ (2022)---can produce accurate, uncertainty-aware temperature predictions over the topographically complex terrain of Switzerland. The answer is affirmative: the ConvCNP, equipped with a high-resolution elevation MLP, achieves an MAE of 1.31\,\textdegree C and a CRPS-based skill of 0.524, reducing the expected prediction error by more than half compared to bilinear interpolation of the ERA5-Land grid. The model resolves fine-scale spatial structure---Alpine valleys, ridges, and plateaus---that is invisible at the ${\sim}$11\,km input resolution.
+This project set out to assess whether Convolutional Conditional Neural Processes---originally demonstrated for UK climate downscaling by \citet{vaughan2022}---can produce accurate, uncertainty-aware temperature predictions over the topographically complex terrain of Switzerland. The answer is affirmative: the ConvCNP, equipped with a high-resolution elevation MLP, achieves an MAE of 1.31\,\textdegree C and a CRPS-based skill of 0.524, reducing the expected prediction error by more than half compared to bilinear interpolation of the ERA5-Land grid. The model resolves fine-scale spatial structure---Alpine valleys, ridges, and plateaus---that is invisible at the ${\sim}$11\,km input resolution.
 
 Scaling experiments reveal that training data volume is the dominant lever for improvement: moving from one to ten years of data yields a larger gain than tripling the number of training epochs, and no overfitting is observed even at 100~epochs. The ablation study confirms that the elevation MLP is the essential architectural component---without it, the model diverges entirely---while TPI provides a small secondary benefit and explicit seasonal features in the MLP are slightly detrimental, suggesting a regularisation advantage from a leaner feature set.
 
@@ -12,13 +12,13 @@ The model degrades gracefully under sparse on-grid input, maintaining positive s
 \section{Limitations}
 
 \begin{enumerate}
-    \item \textbf{Data breadth.} Compared to Vaughan et al.\ (2022), this project uses fewer input channels: only temperature, coordinates, and seasonal encodings for the CNN, plus topographic features for the MLP. The original study additionally included geopotential height, wind fields, and humidity as CNN input channels. The narrower feature set likely limits the model's ability to capture atmosphere-driven local effects such as F\"ohn winds.
+    \item \textbf{Data breadth.} Compared to \citet{vaughan2022}, this project uses fewer input channels: only temperature, coordinates, and seasonal encodings for the CNN, plus topographic features for the MLP. The original study additionally included geopotential height, wind fields, and humidity as CNN input channels. The narrower feature set likely limits the model's ability to capture atmosphere-driven local effects such as F\"ohn winds.
 
-    \item \textbf{Uncertainty calibration.} The model's predicted uncertainties are overconfident by roughly an order of magnitude ($z$-std $\approx$ 8.7; 90\% interval coverage of only 16.5\%). This is a known limitation (C. Guo et al. (2017)) of the Gaussian log-likelihood training objective, which concentrates gradient signal around the mean rather than penalising miscalibrated quantiles uniformly. Increasing training data volume from one to ten years did not resolve this issue, suggesting it is structural rather than data-limited.
+    \item \textbf{Uncertainty calibration.} The model's predicted uncertainties are overconfident by roughly an order of magnitude ($z$-std $\approx$ 8.7; 90\% interval coverage of only 16.5\%). This is a known limitation (\citet{guo2017}) of the Gaussian log-likelihood training objective, which concentrates gradient signal around the mean rather than penalising miscalibrated quantiles uniformly. Increasing training data volume from one to ten years did not resolve this issue, suggesting it is structural rather than data-limited.
 
     \item \textbf{Evaluation against a gridded product.} The MeteoSwiss ground truth is itself an interpolated product, not raw station measurements, and it does not align to the training grid. Errors in the ground-truth interpolation propagate into the evaluation metrics. And the bias of using a portion of the ground-truth to predict all the ground truth also seeps in.
 
-    \item \textbf{Elevation-agnostic CNN.} In this project, all topographic information is supplied exclusively through the elevation MLP, making the CNN itself elevation-agnostic. Upon closer inspection, Vaughan et al.\ (2022) included the geopotential field directly as a CNN input channel, meaning their CNN had access to coarse elevation information during spatial processing. This architectural difference may partly explain why the elevation MLP is so critical in our configuration: it bears the full burden of topographic correction, with no elevation-aware spatial context from the CNN to build upon.
+    \item \textbf{Elevation-agnostic CNN.} In this project, all topographic information is supplied exclusively through the elevation MLP, making the CNN itself elevation-agnostic. Upon closer inspection, \citet{vaughan2022} included the geopotential field directly as a CNN input channel, meaning their CNN had access to coarse elevation information during spatial processing. This architectural difference may partly explain why the elevation MLP is so critical in our configuration: it bears the full burden of topographic correction, with no elevation-aware spatial context from the CNN to build upon.
 
     \item \textbf{Single variable.} Only daily maximum temperature was downscaled. For scoping reasons, minimum and average were not explored. The architecture supports precipitation via a Bernoulli--Gamma output layer, but this path was not exercised and may require additional work to wire correctly.
 \end{enumerate}
@@ -28,7 +28,7 @@ The model degrades gracefully under sparse on-grid input, maintaining positive s
 The findings and limitations of this project suggest several directions for further development.
 
 \paragraph{Geopotential as a CNN channel.}
-The most immediate architectural change would be to include the ERA5-Land geopotential field directly as a CNN input channel, following Vaughan et al.\ (2022). This would give the convolutional encoder access to coarse elevation context during spatial processing, potentially reducing the burden on the elevation MLP and improving predictions in areas where the coarse grid poorly represents the terrain.
+The most immediate architectural change would be to include the ERA5-Land geopotential field directly as a CNN input channel, following \citet{vaughan2022}. This would give the convolutional encoder access to coarse elevation context during spatial processing, potentially reducing the burden on the elevation MLP and improving predictions in areas where the coarse grid poorly represents the terrain.
 
 \paragraph{Improved uncertainty calibration.}
 Replacing the Gaussian log-likelihood with a CRPS-based loss function could address the overconfidence at its root: CRPS penalises miscalibrated quantiles more evenly across the distribution, tending to produce wider, better-calibrated prediction intervals.
@@ -52,7 +52,7 @@ Including a year embedding alongside the seasonal encoding would allow the model
 Switching from daily to hourly datasets and including time-of-day embeddings would be necessary if this technology is to support real-time prediction from live station feeds---a direction of potential interest to SDSC and operational meteorological services.
 
 \paragraph{Precipitation downscaling.}
-The ConvCNP architecture supports precipitation via a Bernoulli--Gamma output layer, as demonstrated by Vaughan et al.\ (2022). Extending the pipeline to precipitation downscaling is a natural next step, though it introduces additional complexity from the mixed discrete-continuous nature of rainfall.
+The ConvCNP architecture supports precipitation via a Bernoulli--Gamma output layer, as demonstrated by \citet{vaughan2022}. Extending the pipeline to precipitation downscaling is a natural next step, though it introduces additional complexity from the mixed discrete-continuous nature of rainfall.
 
 \paragraph{Native off-grid support.}
 Deploying the model operationally on sparse station data requires moving beyond the current snap-to-grid approach. Architectural options---including a true set convolution encoder, attention-based mechanisms, and dual-stream architectures---are discussed in detail in Appendix~\ref{sec:out-of-grid}.
