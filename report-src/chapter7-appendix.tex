@@ -288,14 +288,103 @@ PYTORCH_CUDA_ALLOC_CONF=expandable_segments:False,max_split_size_mb:512
 This disables the incompatible allocator feature and caps the maximum split size to avoid memory fragmentation.
 Both training and prediction notebooks call this function in their first cell, before any other PyTorch import.
 
-\section{Training and predicting}
-\todo{
+\section{Training and Predicting}
+\label{sec:training-predicting}
+
+\subsection{Training}
+
+\subsubsection{Configuration}
+
+All training parameters are set in the second cell of \texttt{training\_notebook.ipynb} by instantiating a \texttt{Params} object.
+The key fields are:
+
 \begin{itemize}
-    \item Documentation: How to train, predict, and evaluate metrics.
-    \item What we store when we train and where we store it.
-    \item What we store when we predict, and where we store it.
+  \item \texttt{VARIABLE} --- the target variable (\texttt{'tmax'} or \texttt{'precip'}).
+  \item \texttt{DATA\_YEAR\_START} --- first year of training data (\texttt{None} for the full archive, e.g.\ \texttt{2023} for a single-year run).
+  \item \texttt{TRIAL\_NAME} --- a human-readable name that becomes the output subdirectory.
+  \item \texttt{N\_EPOCHS}, \texttt{BATCH\_SIZE}, \texttt{LR}, \texttt{PATIENCE}, \texttt{N\_FOLDS} --- standard training hyperparameters.
+  \item Ablation flags: \texttt{SEASONAL\_FEATURES}, \texttt{SEASONAL\_FEATURES\_IN\_MLP}, \texttt{USE\_ELEVATION}, \texttt{USE\_MTPI}.
 \end{itemize}
-}
+
+\texttt{RUN\_TYPE} and \texttt{DEVICE} are auto-detected and should not normally be changed.
+After data loading, the notebook calls \texttt{PARAMS.with\_in\_channels()} to set the number of CNN input channels automatically.
+
+\subsubsection{Running}
+
+Execute all cells in order.
+The notebook loads the datasets, builds a fresh model per fold via \texttt{model\_factory.build\_model()}, and calls \texttt{train\_elev()} for each fold.
+On Renku, checkpoints are synced to the remote mount after every fold (see Section~\ref{sec:running-on-renku}).
+
+\subsubsection{Training Outputs}
+
+All outputs are written to \texttt{trained\_models/<TRIAL\_NAME>/}:
+
+\begin{description}
+  \item[\texttt{params.json}] The full \texttt{Params} object, including data paths. Reloaded by the prediction notebook to ensure identical configuration.
+
+  \item[\texttt{metadata.json}] ERA5 normalization statistics (global mean and standard deviation, latitude/longitude bounds, coordinate arrays). Required to denormalize predictions back to physical units.
+
+  \item[\texttt{model\_fold\_\{0..N-1\}}] PyTorch checkpoint for the best epoch of each fold (selected by validation NLL). Contains \texttt{model\_state\_dict}, optimizer state, and epoch number.
+
+  \item[\texttt{stats\_fold\{0..N-1\}.csv}] Per-epoch training statistics for each fold: MAE, Pearson and Spearman correlations, training and validation NLL.
+
+  \item[\texttt{stats.csv}] All per-fold CSVs concatenated into a single file for convenience.
+
+  \item[\texttt{trainingstats\_*.png}] Training curve plots (per fold and combined average).
+\end{description}
+
+\subsection{Prediction and Evaluation}
+
+\subsubsection{Configuration}
+
+The prediction notebook (\texttt{predictions.ipynb}) has three configuration variables set near the top:
+
+\begin{itemize}
+  \item \texttt{MODEL\_NAME} --- must match a directory under \texttt{trained\_models/}.
+  \item \texttt{INPUT\_DATA} --- either \texttt{'ERA5\_GRID'} (full or sparsified ERA5 context) or \texttt{'METEOSWISS'} (station observations placed onto the ERA5 grid, with the rest set to NaN).
+  \item \texttt{SPARSITY\_TYPE} and its value --- controls how much context data is retained: \texttt{'PERCENT'} with a fraction (e.g.\ \texttt{0.5} keeps 50\% of grid cells) or \texttt{'ABSOLUTE'} with a fixed count (e.g.\ \texttt{100} keeps 100 cells). Setting \texttt{SPARSITY\_PERCENT=1.0} uses the full grid.
+\end{itemize}
+
+All other settings (\texttt{Params}, normalization statistics, architecture) are loaded from the model's saved \texttt{params.json} and \texttt{metadata.json}.
+
+\subsubsection{Running}
+
+Execute all cells in order.
+The notebook reloads the datasets using the saved configuration, builds the context tensor according to the chosen input mode and sparsity, and then for each fold:
+
+\begin{enumerate}
+  \item Loads the best checkpoint for that fold.
+  \item Generates predictions for all holdout days.
+  \item Plots a single representative holdout day (ERA5 input, ground truth, prediction, residuals).
+\end{enumerate}
+
+After all folds, holdout predictions are concatenated (the folds cover non-overlapping time periods) and the combined evaluation is computed: error maps, uncertainty calibration, CRPS, skill scores, and correlation analyses.
+
+\subsubsection{Prediction Outputs}
+
+Outputs are written to \texttt{trained\_models/<MODEL\_NAME>/}:
+
+\begin{description}
+  \item[\texttt{plots/}] All visualization PNGs, named with a prefix encoding the input configuration.
+  The prefix follows the pattern \texttt{\{INPUT\_DATA\}\_\{SPARSITY\_TYPE\}\_\{value\}\_}, e.g.\ \texttt{ERA5\_GRID\_PERCENT\_1.0\_error\_maps.png}.
+  This allows multiple prediction runs (different sparsity levels) to coexist in the same directory.
+
+  The plots include:
+  \begin{itemize}
+    \item Per-fold single-day predictions (\texttt{fold\{N\}\_prediction.png});
+    \item Error maps: MAE, RMSE, bias (\texttt{error\_maps.png});
+    \item Uncertainty vs.\ error scatter (\texttt{uncertainty\_vs\_error.png});
+    \item Altitude and mTPI correlation plots \newline (\texttt{altitude\_vs\_error.png}, \texttt{mtpi\_vs\_error.png});
+    \item Temporal error analysis (\texttt{doy\_vs\_error.png});
+    \item CRPS map (\texttt{crps\_map.png});
+    \item Skill score map (\texttt{skill\_map.png});
+    \item Q--Q calibration plot (\texttt{qq\_calibration.png});
+    \item Reliability diagram (\texttt{reliability\_diagram.png}).
+  \end{itemize}
+
+  \item[\texttt{metrics-\{INPUT\}-\{SPARSITY\}-\{value\}.json}] A JSON file summarizing all scalar metrics: overall MAE, RMSE, bias, CRPS, skill score, correlation coefficients (uncertainty--error, altitude--error, mTPI--error, day-of-year--error), and calibration statistics (PIT mean/std, coverage at 50\%/90\%/95\%, MACE).
+  One file is produced per prediction run, enabling programmatic comparison across experiments and sparsity levels.
+\end{description}
 
 \section{How to add new features to the model}
 \todo{\begin{itemize}
