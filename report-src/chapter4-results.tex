@@ -170,25 +170,32 @@ We can observe the colder months (November--March) observe a higher incidence of
 \quad \texttt{-ablation-elevation}\textsuperscript{$\dagger$}
                               & \multicolumn{5}{c}{--- model diverged; see text ---} \\
 \quad \texttt{-ablation-mtpi}            & 1.33 & 1.74 & $-$0.13 & 1.23 & 0.517 \\
-\quad \texttt{-ablation-seasonal-all}\textsuperscript{$\ddagger$}
-                                         & 1.29 & 1.69 & $+$0.08 & 1.19 & 0.532 \\
+\makecell[l]{\quad \texttt{-ablation-seasonal-all} \textsuperscript{$\ddagger$} \\ \quad \quad (suggest discarding)} & 1.29 & 1.69 & $+$0.08 & 1.19 & 0.532 \\
 \quad \texttt{-ablation-seasonal-in-mlp}\textsuperscript{$\ddagger$}
                                          & 1.29 & 1.69 & $+$0.08 & 1.19 & 0.532 \\
 \bottomrule
 \end{tabular}
 \begin{flushleft}
 \textsuperscript{$\dagger$}\small Without the elevation MLP, the model produced errors orders of magnitude above physical plausibility (MAE~$\approx$~802\,\textdegree C), indicating that the topographic correction stage is essential for meaningful predictions. (This is unexpected, we would expect some degree of interpolation to still take place.) \\[2pt]
-\textsuperscript{$\ddagger$}\small These two ablations produced bit-identical metrics across all evaluation categories, despite differing in whether seasonal features are present in the CNN input. Surprisingly, both of them present a higher skill than the base model.
+\textsuperscript{$\ddagger$}\small These two ablations produced bit-identical metrics across all evaluation categories, despite differing in whether seasonal features are present in the CNN input - this is discussed below. Surprisingly, both of them present a higher skill than the base model.
 \end{flushleft}
 \end{table}
 
-\todo{
-Evaluating the impact of specific components (10-year data):
-\begin{itemize}
-    \item Base model vs. removal of seasonal features (MLP vs. entire model).
-    \item Removal of TPI and Elevation features.
-\end{itemize}
-}
+All ablation models use the same ten-year dataset (2014--2023), 30 training epochs, five-fold cross-validation, and identical splits as the base model. Each experiment disables a single feature group while keeping everything else unchanged, so that differences in the metrics can be attributed to that component alone.
+
+\paragraph{Elevation features.}
+Removing the three topographic inputs---true elevation, elevation difference, and TPI---from the elevation MLP (\texttt{USE\_ELEVATION=False}) caused the model to diverge catastrophically. The resulting MAE of ${\sim}802$\,\textdegree C and a negative skill score of $-314$ indicate that the predictions are off-scale by orders of magnitude. Notably, the altitude--error correlation jumps from 0.19 in the base model to 0.78 in this ablation, confirming that the errors are overwhelmingly concentrated at locations where the true elevation differs most from the coarse ERA5-Land grid-cell elevation. Without topographic correction, the elevation MLP receives only the CNN's interpolated $(\mu, \sigma)$ and zero-valued placeholders; it has no mechanism to compensate for the fact that a 3\,000\,m peak and a 400\,m valley within the same ${\sim}$11\,km grid cell receive nearly identical CNN predictions. The MLP, trained on these uninformative inputs, learns weight configurations that produce numerically unstable outputs at evaluation time---when all 46\,000+ target points are predicted simultaneously---resulting in the observed divergence. This outcome confirms that the elevation MLP is not merely a refinement stage but the \emph{essential} component that bridges the resolution gap between the coarse reanalysis grid and the fine-scale target field. The author must also consider that there may have been some misconfiguration or bug which could cause this, but one was not identified.
+
+\paragraph{Topographic Position Index.}
+Removing only the TPI channel \newline (\texttt{USE\_MTPI=False}) while retaining true elevation and elevation difference has a marginal effect: the MAE increases from 1.31 to 1.33\,\textdegree C and the skill score decreases from 0.524 to 0.517. The bias shifts from $-0.05$ to $-0.13$\,\textdegree C, a small systematic cold bias. This suggests that TPI---which encodes whether a target lies on a ridge, in a valley, or on an open slope---provides a secondary, but not essential, correction on top of the elevation difference. The elevation difference alone captures most of the sub-grid topographic variance.
+
+\paragraph{Seasonal features.}
+Two ablations target the cyclical day-of-year encoding ($\cos$/$\sin$ channels). The first (\texttt{-ablation-seasonal-all}) removes them everywhere: both from the CNN input channels and from the elevation MLP. The second \newline (\texttt{-ablation-seasonal-in-mlp}) removes them only from the MLP while keeping them in the CNN input. Both produce \emph{bit-identical} metrics: MAE\,=\,1.29\,\textdegree C, Skill\,=\,0.532.
+
+This identity means the CNN learns to completely ignore the explicit seasonal channels in its input. While the temperature field itself carries seasonal information, it is very noisy and goes not offer a reliable gradient. This suggests that \texttt{USE\_SEASONAL=False} might possibly not be wired correctly. We therefore suggest discarding that ablation model from our analysis.
+
+\paragraph{Seasonal ablations from the MLP outperform the base model.}
+Counter-intuitively, this ablation achieve slightly \emph{better} metrics than the base model (MAE 1.29 vs.\ 1.31\,\textdegree C; Skill 0.532 vs.\ 0.524). The improvement is small but consistent across all metrics. This likely reflects a mild regularisation effect: the base model's elevation MLP has 7~inputs (including $\cos$/$\sin$), while the seasonal ablations have only 5, reducing the MLP's capacity to overfit to spurious correlations between the seasonal encoding and the residual error. Alternatively, feeding redundant features to the MLP may slightly impede optimisation by diluting the gradient signal from the more informative elevation inputs. In either case, the practical difference is modest, and the result suggests that removing the explicit seasonal features is, if anything, slightly beneficial. This also suggests the MLP might be constrained and might capture more differentiable signal from the training data if we increase its size.
 
 \section{Performance on Sparse Input}
 \todo{Testing model robustness with varying ERA5-Land points: 1\%, 250, 120, 100, 80, 50, and 20 points.}
