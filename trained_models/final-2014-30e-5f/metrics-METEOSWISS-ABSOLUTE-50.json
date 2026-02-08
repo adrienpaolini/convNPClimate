@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f",
+    "input_data": "METEOSWISS",
+    "sparsity_type": "ABSOLUTE",
+    "sparsity_value": 50,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 3.5405330657958984,
+    "rmse": 4.236607074737549,
+    "bias": 2.261323928833008,
+    "crps": 3.4417619872533267,
+    "skill_score": -0.35593724711399743
+  },
+  "correlations": {
+    "uncertainty_error": -0.1784439061302614,
+    "altitude_error": 0.20476832700192263,
+    "mtpi_error": -0.018988959632457773,
+    "doy_error": -0.29230265131359046
+  },
+  "calibration": {
+    "pit_mean": 0.251670286660484,
+    "pit_std": 0.42290833860289284,
+    "z_std": 25.912471771240234,
+    "coverage_50": 0.02267440489221831,
+    "coverage_90": 0.05527955198272668,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.4915310945864415,
+    "coverage_at_50": 0.022424402160908873,
+    "coverage_at_90": 0.05386999703236782,
+    "coverage_at_95": 0.06333733097004342
+  }
+}
