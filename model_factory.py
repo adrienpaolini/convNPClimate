@@ -5,8 +5,11 @@ This module provides a single source of truth for building the model architectur
 used by both training and prediction notebooks.
 """
 
+from collections import OrderedDict
+from pathlib import Path
 from typing import Callable
 
+import torch
 import torch.nn as nn
 
 from params import Params
@@ -86,3 +89,40 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
     print(f"Built {type(model).__name__} with {n_params:,} trainable parameters")
 
     return model, loss_fn, get_value_fn
+
+
+def load_model_checkpoint(
+    checkpoint_path: Path,
+    p: Params,
+    device: torch.device
+) -> tuple[nn.Module, int]:
+    """
+    Load a trained model from checkpoint.
+
+    Args:
+        checkpoint_path: Path to the saved checkpoint file.
+        p: Training parameters used to build the model architecture.
+        device: Torch device to load the model onto.
+
+    Returns:
+        Tuple of (model, epoch) where epoch is the training epoch of the checkpoint.
+    """
+    # Build model architecture using shared factory
+    model, _, _ = build_model(p)
+    model.to(device)
+
+    # Load weights
+    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+
+    # TODO: improve this comment, make it more understandable
+    # Handle potential 'module.' prefix from DataParallel
+    state_dict = checkpoint['model_state_dict']
+    if list(state_dict.keys())[0].startswith('module.'):
+        state_dict = OrderedDict([
+            (k.removeprefix('module.'), v) for k, v in state_dict.items()
+        ])
+
+    model.load_state_dict(state_dict)
+    model.eval()
+
+    return model, checkpoint.get('epoch', -1)

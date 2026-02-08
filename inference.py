@@ -1,16 +1,12 @@
 """Inference utilities for trained convCNP models."""
 
-from collections import OrderedDict
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn as nn
 
 import datasets as ds
-import params
-import model_factory
 from convCNP.training.utils import get_sigma_tmax, get_value_tmax
 
 
@@ -21,43 +17,6 @@ class HoldoutFoldResult:
     preds: np.ndarray    # (holdout_days, n_points)
     sigmas: np.ndarray   # (holdout_days, n_points)
     truths: np.ndarray   # (holdout_days, n_points)
-
-
-# TODO: move this function to model_factory
-def load_model_checkpoint(
-    checkpoint_path: Path,
-    p: params.Params,
-    device: torch.device
-) -> tuple[nn.Module, int]:
-    """
-    Load a trained model from checkpoint.
-
-    Args:
-        checkpoint_path: Path to the saved checkpoint file.
-        p: Training parameters used to build the model architecture.
-        device: Torch device to load the model onto.
-
-    Returns:
-        Tuple of (model, epoch) where epoch is the training epoch of the checkpoint.
-    """
-    # Build model architecture using shared factory
-    model, _, _ = model_factory.build_model(p)
-    model.to(device)
-
-    # Load weights
-    checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
-
-    # Handle potential 'module.' prefix from DataParallel
-    state_dict = checkpoint['model_state_dict']
-    if list(state_dict.keys())[0].startswith('module.'):
-        state_dict = OrderedDict([
-            (k.removeprefix('module.'), v) for k, v in state_dict.items()
-        ])
-
-    model.load_state_dict(state_dict)
-    model.eval()
-
-    return model, checkpoint.get('epoch', -1)
 
 
 def predict_single_day(
