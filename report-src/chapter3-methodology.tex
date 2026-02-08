@@ -275,13 +275,94 @@ To isolate the contribution of individual components, ablation experiments toggl
     \item \textbf{No seasonal} (\texttt{SEASONAL\_FEATURES=False}): cyclical day-of-year channels are removed entirely, forcing the model to make its predictions without knowing which time in the year it is. Weather behaviour at altitude varies greatly depending on the seasons.
 \end{itemize}
 
+\section{Models Trained and Metrics Captured}
+\label{sec:models_trained}
+
+All trained models reside under \texttt{trained\_models/}, with each directory name encoding the key experimental variables following the convention:
+%
+\begin{center}
+\texttt{final-\textit{YYYY}-\textit{N}e-\textit{K}f\,[-ablation-\textit{component}]}
+\end{center}
+%
+\noindent where \textit{YYYY} is the first year of training data (all datasets end in 2023), \textit{N} is the maximum number of training epochs, \textit{K} is the number of cross-validation folds, and the optional \texttt{-ablation-\textit{component}} suffix identifies the disabled feature. For example, \texttt{final-2014-30e-5f} denotes a model trained on 2014--2023 data for up to 30~epochs with 5-fold temporal cross-validation and all features enabled.
+
+Nine model configurations were trained in total, organized into two groups: \textit{primary models} that vary data volume and training duration with all features enabled, and \textit{ablation models} that each disable one component to isolate its contribution. All models share the architecture and hyperparameters listed in Table~\ref{tab:hyperparams} (Section~\ref{sec:experimental_setup}), differing only in the parameters described below.
+
+\subsection{Primary Models}
+
+The primary experiments study two axes: the effect of training duration (10, 30, and 100~epochs on a single year of data) and the effect of data volume (1~year versus 10~years at a fixed epoch budget). Table~\ref{tab:primary_models} summarizes the four completed configurations.
+
+\begin{table}[ht]
+\centering
+\caption{Primary model configurations. All use the full feature set (elevation MLP, TPI, seasonal encoding in both CNN and MLP) and 5-fold temporal cross-validation.}
+\label{tab:primary_models}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Model name} & \textbf{Data range} & \textbf{Days} & \textbf{Epochs} & \textbf{Batch size} \\
+\midrule
+\texttt{final-2023-10e-5f}  & 2023 only    & 365    & 10  & 8 \\
+\texttt{final-2023-30e-5f}  & 2023 only    & 365    & 30  & 8 \\
+\texttt{final-2023-100e-5f} & 2023 only    & 365    & 100 & 8 \\
+\texttt{final-2014-30e-5f}  & 2014--2023   & 3\,652 & 30  & 8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+A fifth configuration, \texttt{final-2004-30e-5f}, attempted to extend the training window to twenty years (2004--2023). The larger dataset required reducing the batch size from~8 to~4 to fit within GPU memory. Only one of five cross-validation folds completed before the computational budget was exhausted; this model was not carried forward to evaluation and is excluded from subsequent results.
+
+\subsection{Ablation Models}
+
+To isolate the contribution of individual model components, four ablation experiments were conducted on the ten-year dataset (2014--2023, 30~epochs, 5~folds). Each ablation disables exactly one feature relative to the fully-featured baseline (\texttt{final-2014-30e-5f}). Table~\ref{tab:ablation_models} lists the configurations and indicates which features are enabled~(\checkmark) or disabled~(--) in each variant.
+
+\begin{table}[ht]
+\centering
+\caption{Ablation model configurations. All use 2014--2023 data, 30~epochs, 5~folds, batch size~8. The baseline row repeats the fully-featured ten-year model for reference.}
+\label{tab:ablation_models}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Ablation suffix} & \textbf{Elev.} & \textbf{TPI} & \textbf{Season. (CNN)} & \textbf{Season. (MLP)} \\
+\midrule
+(none---baseline)                  & \checkmark & \checkmark & \checkmark & \checkmark \\
+\texttt{-ablation-elevation}       & --         & --         & \checkmark & \checkmark \\
+\texttt{-ablation-mtpi}            & \checkmark & --         & \checkmark & \checkmark \\
+\texttt{-ablation-seasonal-all}    & \checkmark & \checkmark & --         & --         \\
+\texttt{-ablation-seasonal-in-mlp} & \checkmark & \checkmark & \checkmark & --         \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Disabling elevation (\texttt{USE\_ELEVATION=False}) also disables TPI, since TPI is an input to the elevation MLP (Section~\ref{sec:architecture_overview}). This variant therefore removes the entire topographic correction stage, and the model's output relies solely on the CNN decoder's grid-to-point interpolation.
+
+\subsection{Metrics Captured}
+
+Each evaluation run---covering all five cross-validation folds---produces a JSON file following the naming convention \texttt{metrics-\textit{INPUT}-\textit{SPARSITY}-\textit{value}.json} (see Appendix for the full specification). The recorded metrics fall into four groups:
+
+\begin{description}
+    \item[Point accuracy.] Mean Absolute Error (MAE), Root Mean Squared Error (RMSE), and mean bias, all in~\textdegree C.
+
+    \item[Probabilistic skill.] The Continuous Ranked Probability Score (CRPS) and a skill score relative to deterministic ERA5-Land bilinear interpolation:
+    %
+    \begin{equation}
+        \text{SS} = 1 - \frac{\text{CRPS}_{\text{model}}}{\text{CRPS}_{\text{ref}}}
+        \label{eq:skill_score}
+    \end{equation}
+    %
+    where the reference CRPS equals the MAE of the bilinear baseline (since the CRPS of a deterministic forecast reduces to its mean absolute error). A skill score of~0 indicates parity with the baseline; positive values indicate improvement.
+
+    \item[Correlations.] Pearson correlations between predicted uncertainty~($\sigma$) and absolute error, between altitude and error, between mTPI and error, and between day-of-year and error.
+
+    \item[Calibration.] Probability Integral Transform (PIT) mean and standard deviation, observed coverage at the 50\%, 90\%, and 95\% nominal levels, the Kolmogorov--Smirnov $p$-value, and the Mean Absolute Calibration Error (MACE).
+\end{description}
+
 \subsection{Predictions on sparse gridded input}
 
-\todo{Describe what we did}
+For gridded input, a sparse grid of ERA5-Local was offered the model as input to predict the full target grid. Different sparsity levels were captured.
 
 \subsection{Predictions on sparse out-of-grid input}
 
-\todo{Describe what we did, specifically that we had to "regrid" the observations. Explain the future work section describes an alternative approach.}
+For out-of-grid input (sampled from the MeteoSwiss target dataset), the points are regridded onto the training grid (ERA5-Local) and then fed to the model for full target grid prediction. Given the rugged Swiss topography, this approach is expected to cause a massive reduction in model performance.
+
+Please see section \ref{sec:out-of-grid} in the Appendix for considerations on how to better handle out-of-grid inputs.
 
 \subsection{Technology Stack}
 
