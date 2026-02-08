@@ -1,164 +1,61 @@
-% --- CHAPTER 4: RESULTS AND EVALUATION ---
-\chapter{Results and Evaluation}
+% --- CHAPTER 5: CONCLUSION ---
+\chapter{Conclusion and Future Work}
 
-\section{Experimental Results}
-\label{sec:experimental_results}
+\section{Conclusion}
 
-This section demonstrates that the ConvCNP training procedure converges reliably and that the resulting model produces physically plausible downscaled predictions. Detailed quantitative evaluation follows in subsequent sections.
+This project set out to assess whether Convolutional Conditional Neural Processes---originally demonstrated for UK climate downscaling by Vaughan et al.\ (2022)---can produce accurate, uncertainty-aware temperature predictions over the topographically complex terrain of Switzerland. The answer is affirmative: the ConvCNP, equipped with a high-resolution elevation MLP, achieves an MAE of 1.31\,\textdegree C and a CRPS-based skill of 0.524, reducing the expected prediction error by more than half compared to bilinear interpolation of the ERA5-Land grid. The model resolves fine-scale spatial structure---Alpine valleys, ridges, and plateaus---that is invisible at the ${\sim}$11\,km input resolution.
 
-\subsection{Training Convergence}
+Scaling experiments reveal that training data volume is the dominant lever for improvement: moving from one to ten years of data yields a larger gain than tripling the number of training epochs, and no overfitting is observed even at 100~epochs. The ablation study confirms that the elevation MLP is the essential architectural component---without it, the model diverges entirely---while TPI provides a small secondary benefit and explicit seasonal features in the MLP are slightly detrimental, suggesting a regularisation advantage from a leaner feature set.
 
-\begin{figure}[H]
-    \centering
-    \includegraphics[width=\textwidth]{../trained_models/final-2014-30e-5f/trainingstats_all.png}
-    \caption{Training curves for \texttt{final-2014-30e-5f}, averaged across five folds. Left: Pearson and Spearman correlations (log residual scale). Right: validation MAE (normalized units), training NLL, and validation NLL.}
-    \label{fig:training_curves}
-\end{figure}
+The model degrades gracefully under sparse on-grid input, maintaining positive skill down to approximately 10\% of the ERA5-Land grid. However, zero-shot deployment on off-grid MeteoSwiss station observations does not achieve positive skill at any tested density, highlighting the distribution shift between the dense gridded training regime and sparse irregular inference. Uncertainty calibration remains an open challenge: all configurations are severely overconfident, though the ranking of predicted uncertainties is informative.
 
-Figure~\ref{fig:training_curves} shows the training curves for the primary ten-year model \newline (\texttt{final-2014-30e-5f}), averaged across all five cross-validation folds. The left panel tracks Pearson and Spearman correlation on a logarithmic residual scale ($1 - r$); the right panel shows the validation MAE (in normalized units) alongside the training and validation negative log-likelihood (NLL).
-
-
-Three convergence trends are evident:
+\section{Limitations}
 
 \begin{enumerate}
-    \item \textbf{Error reduction.} The validation MAE drops steeply during the first five epochs---from ${\sim}0.21$ to ${\sim}0.16$ in normalized units---and continues to decrease more gradually thereafter, reaching ${\sim}0.14$ by epoch~30. All five folds exhibit the same pattern with tight variance: the best per-fold MAE values cluster around $0.141 \pm 0.001$, indicating consistent convergence.
+    \item \textbf{Data breadth.} Compared to Vaughan et al.\ (2022), this project uses fewer input channels: only temperature, coordinates, and seasonal encodings for the CNN, plus topographic features for the MLP. The original study additionally included geopotential height, wind fields, and humidity as CNN input channels. The narrower feature set likely limits the model's ability to capture atmosphere-driven local effects such as F\"ohn winds.
 
-    \item \textbf{Correlation improvement.} Both Pearson and Spearman correlations start high---above 0.967 already at epoch~0, reflecting the strong spatial structure in the temperature field---and improve to ${\sim}0.98$ by the end of training.
+    \item \textbf{Uncertainty calibration.} The model's predicted uncertainties are overconfident by roughly an order of magnitude ($z$-std $\approx$ 8.7; 90\% interval coverage of only 16.5\%). This is a known limitation (C. Guo et al. (2017)) of the Gaussian log-likelihood training objective, which concentrates gradient signal around the mean rather than penalising miscalibrated quantiles uniformly. Increasing training data volume from one to ten years did not resolve this issue, suggesting it is structural rather than data-limited.
 
-    \item \textbf{Loss decrease.} The training and validation NLL both decrease from positive values (${\sim}0.2$) to negative values (${\sim}{-}0.25$), indicating that the model learns to assign increasingly high likelihood to the observed targets. The two curves track each other closely throughout, with no divergence between them---a sign that overfitting is not occurring. No fold triggered early stopping; all five ran for the full 30~epochs, and the best checkpoints were selected between epochs~18 and~29, suggesting that marginal gains were still accumulating toward the end of training. This is further confirmed by the experiment running for up to 100 epochs (see below).
+    \item \textbf{Evaluation against a gridded product.} The MeteoSwiss ground truth is itself an interpolated product, not raw station measurements, and it does not align to the training grid. Errors in the ground-truth interpolation propagate into the evaluation metrics. And the bias of using a portion of the ground-truth to predict all the ground truth also seeps in.
+
+    \item \textbf{Elevation-agnostic CNN.} In this project, all topographic information is supplied exclusively through the elevation MLP, making the CNN itself elevation-agnostic. Upon closer inspection, Vaughan et al.\ (2022) included the geopotential field directly as a CNN input channel, meaning their CNN had access to coarse elevation information during spatial processing. This architectural difference may partly explain why the elevation MLP is so critical in our configuration: it bears the full burden of topographic correction, with no elevation-aware spatial context from the CNN to build upon.
+
+    \item \textbf{Single variable.} Only daily maximum temperature was downscaled. For scoping reasons, minimum and average were not explored. The architecture supports precipitation via a Bernoulli--Gamma output layer, but this path was not exercised and may require additional work to wire correctly.
 \end{enumerate}
 
-\subsection{Sample Prediction}
+\section{Future Work}
 
-\begin{figure}[ht]
-    \centering
-    \includegraphics[width=\textwidth]{../trained_models/final-2014-30e-5f/plots/ERA5_GRID_PERCENT_1.0_fold4_prediction.png}
-    \caption{Single-day prediction for fold~5 (day~3\,286) of the ten-year model. From left to right: ERA5-Land input (${\sim}$11\,km), MeteoSwiss ground truth (${\sim}$1\,km), model prediction (${\sim}$1\,km), and bias (prediction~$-$~truth). For this day and fold, MAE~=~1.47\,\textdegree C, RMSE~=~1.87\,\textdegree C, bias~=~$-$0.57\,\textdegree C.}
-    \label{fig:sample_prediction}
-\end{figure}
+The findings and limitations of this project suggest several directions for further development.
 
-Figure~\ref{fig:sample_prediction} illustrates a single-day prediction from the fifth cross-validation fold.
+\paragraph{Geopotential as a CNN channel.}
+The most immediate architectural change would be to include the ERA5-Land geopotential field directly as a CNN input channel, following Vaughan et al.\ (2022). This would give the convolutional encoder access to coarse elevation context during spatial processing, potentially reducing the burden on the elevation MLP and improving predictions in areas where the coarse grid poorly represents the terrain.
 
-The input panel shows the smooth, coarse-resolution temperature field from ERA5-Land, in which topographic detail is largely absent. The ground-truth panel reveals the fine-grained spatial structure that the model must recover: sharp temperature gradients along the Alpine ridge, cold mountain peaks, and warmer valleys---features well below the resolution of the input grid.
+\paragraph{Improved uncertainty calibration.}
+Replacing the Gaussian log-likelihood with a CRPS-based loss function could address the overconfidence at its root: CRPS penalises miscalibrated quantiles more evenly across the distribution, tending to produce wider, better-calibrated prediction intervals.
 
-The prediction panel demonstrates that the model successfully reconstructs much of this detail. The overall spatial pattern closely follows the ground truth, with the major valleys, plateaus, and high-altitude regions clearly resolved. The bias panel confirms that residual errors are small across most of the domain (near-white shading), with the largest deviations concentrated in high-mountain areas where the elevation gradient is steepest.
+\paragraph{Additional input channels.}
+The model currently lacks atmospheric context beyond temperature. Integrating wind fields, humidity, and surface pressure as CNN channels---as well as terrain-derived features such as aspect and land cover---would provide the model with physically relevant information about local meteorological processes. These additions follow the extension points documented in Appendix~\ref{sec:adding-features}.
 
-\todo{move the following paragraph to chapter 5 - conclusions}
-These results confirm that the ConvCNP, equipped with the elevation MLP and topographic features, can produce spatially coherent downscaled temperature fields at ${\sim}$1\,km resolution from ${\sim}$11\,km reanalysis input. The subsequent sections evaluate this capability quantitatively across the full holdout dataset.
+\paragraph{Multi-scale topographic features.}
+Currently only TPI at 500\,m radius is used. Including TPI at additional scales (e.g.\ 2\,000\,m, also provided in swisstopo DHM25) would encode both local and wider topographic context, allowing the model to distinguish situations such as a hill within a deep valley from a hill on open plains---a distinction relevant for phenomena like cold-air pooling and valley inversions.
 
+\paragraph{Larger elevation MLP.}
+The observation that removing seasonal features from the MLP slightly improves performance suggests the MLP may be capacity-constrained. Increasing its width or depth could allow it to capture more complex nonlinear interactions between elevation, terrain shape, and atmospheric conditions, and might also improve uncertainty calibration by giving the network more expressive power for the $\sigma$ output.
 
-\section{Performance}
-\subsection{Global metrics}
+\paragraph{Temporal context windows.}
+The current model processes each day independently. Providing a temporal window of consecutive grids as input would allow the CNN to track the movement and evolution of weather systems---e.g.\ the progression of cold fronts across the Alps---potentially improving predictions during rapidly changing conditions.
 
-\begin{table}[H]
-\centering
-\caption{Full-grid evaluation overview. All models evaluated with 100\% of the ERA5-Land grid (1\,769~points) as context input.}
-\label{tab:full_grid_overview}
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-\textbf{Model} & \textbf{MAE} & \textbf{RMSE} & \textbf{Bias} & \textbf{CRPS} & \textbf{Skill} \\
-                & (\textdegree C) & (\textdegree C) & (\textdegree C) & (\textdegree C) & \\
-\midrule
-\multicolumn{6}{@{}l}{\textit{Primary models}} \\
-\quad \texttt{2023-10e-5f}   & 2.09 & 2.67 & $+$0.66 & 1.90 & 0.245 \\
-\quad \texttt{2023-30e-5f}   & 1.64 & 2.08 & $+$0.24 & 1.49 & 0.410 \\
-\quad \texttt{2023-100e-5f}  & 1.62 & 2.05 & $+$0.25 & 1.48 & 0.415 \\
-\quad \texttt{2014-30e-5f}   & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 \\
-\midrule
-\bottomrule
-\end{tabular}
-\end{table}
+\paragraph{Climate-aware temporal encoding.}
+Including a year embedding alongside the seasonal encoding would allow the model, when trained over multi-decadal archives, to account for long-term climate trends such as rising temperatures and glacier retreat---effects that are relevant over the full ERA5-Land record (1960--present) but invisible to a purely seasonal encoding.
 
-\newpage
-Table~\ref{tab:full_grid_overview} summarises the headline accuracy and skill metrics for all evaluated models on the full ERA5-Land grid (1\,769 context points). Each row reports the mean absolute error (MAE), root-mean-square error (RMSE), and mean bias of the point prediction in degrees Celsius, together with the Continuous Ranked Probability Score (CRPS) and a skill score defined as $\text{Skill} = 1 - \text{CRPS}_{\text{model}} / \text{CRPS}_{\text{ref}}$, where the reference is the deterministic bilinear interpolation of ERA5-Land to the target grid (for a deterministic forecast, $\text{CRPS} = \text{MAE}$). A skill of~0 indicates no improvement over the interpolation baseline; a skill of~1 would indicate a perfect forecast.
+\paragraph{Hourly resolution and diurnal cycles.}
+Switching from daily to hourly datasets and including time-of-day embeddings would be necessary if this technology is to support real-time prediction from live station feeds---a direction of potential interest to SDSC and operational meteorological services.
 
-\paragraph{Effect of training duration.}
-The three single-year models (trained on 2023 data, evaluated on 365 holdout days) isolate the effect of longer optimisation. Increasing from 10 to 30~epochs cuts the MAE from 2.09 to 1.64\,\textdegree C (a 22\% reduction) and nearly doubles the skill score from 0.245 to 0.410. Extending training further to 100~epochs yields only a marginal additional gain (MAE 1.62\,\textdegree C, Skill 0.415), suggesting that most of the representational capacity available to the single-year model is utilised within the first 30~epochs. Even though the slowdown was found, up to 100 epochs convergence continues without signs of overfitting.
+\paragraph{Precipitation downscaling.}
+The ConvCNP architecture supports precipitation via a Bernoulli--Gamma output layer, as demonstrated by Vaughan et al.\ (2022). Extending the pipeline to precipitation downscaling is a natural next step, though it introduces additional complexity from the mixed discrete-continuous nature of rainfall.
 
-\paragraph{Effect of training data volume.}
-Moving from one year to ten years of training data (both at 30~epochs) produces the largest single improvement: the MAE drops from 1.64 to 1.31\,\textdegree C, the RMSE from 2.08 to 1.71\,\textdegree C, and the skill score rises from 0.410 to 0.524. The mean bias also shrinks to near zero ($-$0.05\,\textdegree C). These gains indicate that additional climatological diversity---exposing the model to a wider range of synoptic situations and seasonal extremes---is more beneficial than additional gradient steps on a limited sample.
+\paragraph{Native off-grid support.}
+Deploying the model operationally on sparse station data requires moving beyond the current snap-to-grid approach. Architectural options---including a true set convolution encoder, attention-based mechanisms, and dual-stream architectures---are discussed in detail in Appendix~\ref{sec:out-of-grid}.
 
-\paragraph{Skill relative to ERA5-Land interpolation.}
-All primary models improve upon the bilinear-interpolation baseline. The ten-year model achieves a CRPS-based skill of 0.524, meaning its probabilistic predictions reduce the expected error by more than half compared to simply interpolating the coarse reanalysis field. Even the weakest model (10~epochs, single year) attains a skill of 0.245, confirming that the ConvCNP learns meaningful fine-scale structure beyond what spatial interpolation alone can provide.
-
-\paragraph{Uncertainty calibration.}
-\nopagebreak
-\begin{figure}[H]
-    \centering
-    \begin{tabular}{@{}cc@{}}
-        \includegraphics[width=0.48\textwidth]{../trained_models/final-2023-10e-5f/plots/ERA5_GRID_PERCENT_1.0_qq_calibration.png} &
-        \includegraphics[width=0.48\textwidth]{../trained_models/final-2023-30e-5f/plots/ERA5_GRID_PERCENT_1.0_qq_calibration.png} \\
-        \includegraphics[width=0.48\textwidth]{../trained_models/final-2023-100e-5f/plots/ERA5_GRID_PERCENT_1.0_qq_calibration.png} &
-        \includegraphics[width=0.48\textwidth]{../trained_models/final-2014-30e-5f/plots/ERA5_GRID_PERCENT_1.0_qq_calibration.png} \\
-    \end{tabular}
-    \caption{Q--Q calibration plots (PIT quantiles vs.\ uniform theoretical quantiles) for the four primary models. Top row: single-year models at 10 and 30~epochs. Bottom row: single-year model at 100~epochs (left) and ten-year model at 30~epochs (right). All models are substantially overconfident, with central 90\% coverage ranging from 16.5\% to 20\%.}
-    \label{fig:qq_calibration}
-\end{figure}
-
-Figure~\ref{fig:qq_calibration} shows Q--Q plots of the Probability Integral Transform (PIT) for each primary model. A perfectly calibrated model would produce PIT values uniformly distributed on $[0,1]$, yielding points along the diagonal. All four models exhibit a pronounced S-shaped departure: the empirical quantiles rise steeply, the standardised residual standard deviation ($z$-std) is approximately 8.7 (ideal: 1.0), confirming that the model is overconfident by roughly an order of magnitude.
-
-This miscalibration is consistent across all configurations and may arise from the Gaussian likelihood training objective, which optimises overall fit rather than interval coverage. 
-
-\subsection{Correlations}
-\todo{Error vs. Uncertainty, Altitude vs. Uncertainty, Season vs. Error.}
-
-Despite this overconfidence, the model's predicted uncertainties remain informative: the correlation between predicted $\sigma$ and absolute error is 0.74 for the ten-year model, meaning that the uncertainty estimates reliably rank predictions by quality even though their absolute magnitudes are too small.
-
-\section{Ablation Analysis}
-\label{sec:ablation}
-
-\begin{table}[H]
-\centering
-\caption{Full-grid evaluation overview. All models evaluated with 100\% of the ERA5-Land grid (1\,769~points) as context input.}
-\label{tab:full_grid_overview}
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-\textbf{Model} & \textbf{MAE} & \textbf{RMSE} & \textbf{Bias} & \textbf{CRPS} & \textbf{Skill} \\
-                & (\textdegree C) & (\textdegree C) & (\textdegree C) & (\textdegree C) & \\
-\midrule
-\multicolumn{6}{@{}l}{\textit{Primary model (2014--2023)}} \\
-\quad \texttt{2014-30e-5f}   & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 \\
-\midrule
-\multicolumn{6}{@{}l}{\textit{Ablation models (2014--2023)}} \\
-\quad \texttt{-ablation-elevation}\textsuperscript{$\dagger$}
-                              & \multicolumn{5}{c}{--- model diverged; see text ---} \\
-\quad \texttt{-ablation-mtpi}            & 1.33 & 1.74 & $-$0.13 & 1.23 & 0.517 \\
-\quad \texttt{-ablation-seasonal-all}\textsuperscript{$\ddagger$}
-                                         & 1.29 & 1.69 & $+$0.08 & 1.19 & 0.532 \\
-\quad \texttt{-ablation-seasonal-in-mlp}\textsuperscript{$\ddagger$}
-                                         & 1.29 & 1.69 & $+$0.08 & 1.19 & 0.532 \\
-\bottomrule
-\end{tabular}
-\begin{flushleft}
-\textsuperscript{$\dagger$}\small Without the elevation MLP, the model produced errors orders of magnitude above physical plausibility (MAE~$\approx$~802\,\textdegree C), indicating that the topographic correction stage is essential for meaningful predictions. (This is unexpected, we would expect some degree of interpolation to still take place.) \\[2pt]
-\textsuperscript{$\ddagger$}\small These two ablations produced bit-identical metrics across all evaluation categories, despite differing in whether seasonal features are present in the CNN input. Interestingly, both of them present a higher skill than the base model. This unexpected result is examined in the ablation analysis (Section~\ref{sec:ablation}).
-\end{flushleft}
-\end{table}
-
-\todo{
-Evaluating the impact of specific components (10-year data):
-\begin{itemize}
-    \item Base model vs. removal of seasonal features (MLP vs. entire model).
-    \item Removal of TPI and Elevation features.
-\end{itemize}
-}
-
-\section{Performance on Sparse Input}
-\todo{Testing model robustness with varying ERA5-Land points: 1\%, 250, 120, 100, 80, 50, and 20 points.}
-
-\section{Performance on out-of-grid input}
-\todo{Testing model robustness with varying out-of-grid points (sourced from the target set, MeteoSwiss): 250, 120, 100, 80, 50, and 20 points}
-
-\section{Discussion of Results}
-\todo{Analyze if the model supports the hypotheses. Discuss the implications of the ablation study and the model's capacity to work from sparse inputs.
-\begin{itemize}
-    \item Can these models perform well? Yes and why
-    \begin{itemize}
-        \item What does ablation reveal?
-        \item How well can the model work from sparse input?
-    \end{itemize}
-    \item How does this compare against ERA5-Land interpolation (skill), plots
-    \item Training more epochs up to 100 keeps improving results.
-    \item Training using more years worth of data (confirm) keeps improving results.
-\end{itemize}
-}
+\paragraph{Training infrastructure.}
+Renku GPU sessions are occasionally interrupted during multi-day training runs for inscrutable reasons. Implementing checkpoint-based fold resumption---allowing training to restart from the middle of a fold rather than from the beginning---would improve robustness and reduce wasted compute.
