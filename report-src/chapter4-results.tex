@@ -62,14 +62,14 @@ Here are visualizations of the errors, error bias, CRPS and skill for the baseli
         \includegraphics[width=0.48\textwidth, trim={0 0 0 25px}, clip]{../trained_models/final-2023-30e-5f/plots/ERA5_GRID_PERCENT_1.0_skill_map.png} \\
     \end{tabular}
     \caption{Per-pixel CRPS and Skill maps}
-    \label{fig:qq_calibration}
+    \label{fig:crps_skill_maps}
 \end{figure}
 
 \begin{figure}[H]
     \centering
     \includegraphics[width=\textwidth, trim={0 0 0 25px}, clip]{../trained_models/final-2014-30e-5f/plots/ERA5_GRID_PERCENT_1.0_fold4_prediction.png}
     \caption{Single-day prediction for fold~5 (day~3\,286) of the ten-year model. From left to right: ERA5-Land input (${\sim}$11\,km), MeteoSwiss ground truth (${\sim}$1\,km), model prediction (${\sim}$1\,km), and bias (prediction~$-$~truth). For this day and fold, MAE~=~1.47\,\textdegree C, RMSE~=~1.87\,\textdegree C, bias~=~$-$0.57\,\textdegree C.}
-    \label{fig:sample_prediction}
+    \label{fig:sample_prediction_performance}
 \end{figure}
 
 \begin{table}[H]
@@ -127,7 +127,7 @@ This miscalibration is consistent across all configurations and may arise from t
     \centering
     \includegraphics[width=\textwidth, trim={0 0 0 25px}, clip]{../trained_models/final-2014-30e-5f/plots/ERA5_GRID_PERCENT_1.0_uncertainty_vs_error.png}
     \caption{Uncertainty map, error map for comparison, and cross-correlation on the baseline model, covering 10 years of training data, 30 epochs, 5 folds, no ablation, conjoined results from all folds.}
-    \label{fig:sample_prediction}
+    \label{fig:uncertainty_vs_error}
 \end{figure}
 
 Despite the overconfidence mentioned above, the model's predicted uncertainties remain informative: the correlation between predicted $\sigma$ and absolute error is 0.74 for the ten-year model, meaning that the uncertainty estimates reliably rank predictions by quality even though their absolute magnitudes are too small.
@@ -136,7 +136,7 @@ Despite the overconfidence mentioned above, the model's predicted uncertainties 
     \centering
     \includegraphics[width=\textwidth, trim={0 0 0 25px}, clip]{../trained_models/final-2014-30e-5f/plots/ERA5_GRID_PERCENT_1.0_altitude_vs_error.png}
     \caption{Altitude map, error map for comparison, and cross-correlation on the baseline model, covering 10 years of training data, 30 epochs, 5 folds, no ablation, conjoined results from all folds.}
-    \label{fig:sample_prediction}
+    \label{fig:altitude_vs_error}
 \end{figure}
 
 It is known that weather prediction at altitude is a tough problem. The correlation between altitude and error exists, but is significantly lower.
@@ -145,7 +145,7 @@ It is known that weather prediction at altitude is a tough problem. The correlat
     \centering
     \includegraphics[width=\textwidth, trim={0 0 0 25px}, clip]{../trained_models/final-2014-30e-5f/plots/ERA5_GRID_PERCENT_1.0_doy_vs_error.png}
     \caption{Mean error per day-of-year, covering 10 years of training data, 30 epochs, 5 folds, no ablation, conjoined results from all folds.}
-    \label{fig:sample_prediction}
+    \label{fig:doy_vs_error}
 \end{figure}
 
 We can observe the colder months (November--March) observe a higher incidence of outliers in mean absolute error.
@@ -156,8 +156,8 @@ We can observe the colder months (November--March) observe a higher incidence of
 
 \begin{table}[H]
 \centering
-\caption{Full-grid evaluation overview. All models evaluated with 100\% of the ERA5-Land grid (1\,769~points) as context input.}
-\label{tab:full_grid_overview}
+\caption{Ablation evaluation overview. All models evaluated with 100\% of the ERA5-Land grid (1\,769~points) as context input.}
+\label{tab:ablation_overview}
 \begin{tabular}{@{}lrrrrr@{}}
 \toprule
 \textbf{Model} & \textbf{MAE} & \textbf{RMSE} & \textbf{Bias} & \textbf{CRPS} & \textbf{Skill} \\
@@ -197,11 +197,112 @@ This identity means the CNN learns to completely ignore the explicit seasonal ch
 \paragraph{Seasonal ablations from the MLP outperform the base model.}
 Counter-intuitively, this ablation achieve slightly \emph{better} metrics than the base model (MAE 1.29 vs.\ 1.31\,\textdegree C; Skill 0.532 vs.\ 0.524). The improvement is small but consistent across all metrics. This likely reflects a mild regularisation effect: the base model's elevation MLP has 7~inputs (including $\cos$/$\sin$), while the seasonal ablations have only 5, reducing the MLP's capacity to overfit to spurious correlations between the seasonal encoding and the residual error. Alternatively, feeding redundant features to the MLP may slightly impede optimisation by diluting the gradient signal from the more informative elevation inputs. In either case, the practical difference is modest, and the result suggests that removing the explicit seasonal features is, if anything, slightly beneficial. This also suggests the MLP might be constrained and might capture more differentiable signal from the training data if we increase its size.
 
-\section{Performance on Sparse Input}
-\todo{Testing model robustness with varying ERA5-Land points: 1\%, 250, 120, 100, 80, 50, and 20 points.}
+\section{Performance on sparse input, on- and off-grid}
+\label{sec:sparse}
 
-\section{Performance on out-of-grid input}
-\todo{Testing model robustness with varying out-of-grid points (sourced from the target set, MeteoSwiss): 250, 120, 100, 80, 50, and 20 points}
+A key question for real-world deployment is how the model behaves when the full ERA5-Land grid is unavailable and only a sparse set of observations is provided as context. We evaluate two scenarios: (i)~\emph{on-grid} sparsity, where a random subset of ERA5-Land grid cells is retained, and (ii)~\emph{off-grid} sparsity, where the context consists of MeteoSwiss ground-station observations placed onto the nearest ERA5 grid cell. In both cases the model weights are frozen---no retraining is performed---so the results measure zero-shot robustness to reduced input.
+
+\subsection{On-grid sparsity (ERA5-Land)}
+
+\begin{table}[H]
+\centering
+\caption{Performance with sparse ERA5-Land grid input. The full grid has 1\,769~points.}
+\label{tab:sparse_era5}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+\textbf{Input} & \textbf{Points} & \textbf{MAE} & \textbf{RMSE} & \textbf{Bias} & \textbf{CRPS} & \textbf{Skill} & \textbf{$\sigma$--err} \\
+                & & (\textdegree C) & (\textdegree C) & (\textdegree C) & (\textdegree C) & & corr \\
+\midrule
+\quad 20 pts      & 20   & 4.93 & 6.09 & $+$1.81 & 4.83 & $-$0.903 & 0.111 \\
+\quad 50 pts      & 50   & 3.73 & 4.66 & $+$1.73 & 3.63 & $-$0.430 & $-$0.012 \\
+\quad 80 pts      & 80   & 3.20 & 4.02 & $+$1.69 & 3.10 & $-$0.223 & $-$0.023 \\
+\quad 100 pts     & 100  & 2.99 & 3.75 & $+$1.59 & 2.89 & $-$0.140 & $-$0.026 \\
+\quad 120 pts     & 120  & 2.77 & 3.48 & $+$1.43 & 2.67 & $-$0.052 & $-$0.010 \\
+\quad 10\% (177)  & 177  & 2.27 & 2.86 & $+$1.01 & 2.17 & 0.144  & $-$0.002 \\
+\quad 25\% (442)  & 442  & 1.51 & 1.93 & $+$0.20 & 1.41 & 0.446  & 0.272 \\
+\quad 50\% (885)  & 885  & 1.36 & 1.77 & $+$0.01 & 1.26 & 0.505  & 0.668 \\
+\quad 90\% (1\,592) & 1\,592 & 1.31 & 1.72 & $-$0.04 & 1.21 & 0.522 & 0.736 \\
+\quad 100\% (1\,769) & 1\,769 & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 & 0.740 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:sparse_era5} summarises the model's performance as the fraction of retained ERA5-Land grid cells decreases from 100\% to as few as 20~points.
+
+\paragraph{Graceful degradation at moderate sparsity.}
+Halving the input grid to 50\% (885~points) increases the MAE by only 3.8\%, from 1.31 to 1.36\,\textdegree C, and the skill score drops marginally from 0.524 to 0.505. At 25\% of the grid (442~points), the MAE rises to 1.51\,\textdegree C (+15\%) but the skill remains strongly positive at 0.446, meaning the model still substantially outperforms bilinear interpolation. These results demonstrate that the ConvCNP's convolutional encoder can extract useful spatial structure even from heavily subsampled gridded input.
+
+\paragraph{Transition to negative skill.}
+At 10\% of the grid (177~points), the MAE increases to 2.27\,\textdegree C (+74\%) and the skill drops to 0.144---still positive, but the model's advantage over the interpolation baseline is diminishing rapidly. Below 177~points, the skill turns negative: at 120~points it is $-$0.052 and at 20~points it reaches $-$0.903, indicating that the model performs worse than simple bilinear interpolation. The crossover occurs between approximately 120 and 177~ERA5 grid points.
+
+\paragraph{Uncertainty estimates collapse.}
+At the full grid, the correlation between predicted $\sigma$ and absolute error is 0.74, indicating highly informative uncertainty estimates. This correlation degrades smoothly---0.67 at 50\%, 0.27 at 25\%---and effectively vanishes below 10\% ($-$0.002 at 177~points). For the absolute-count configurations (20--120~points), the $\sigma$--error correlation hovers near zero, meaning the model's uncertainty estimates are no longer informative. This is consistent with the CNN receiving too little spatial context to distinguish uncertain from confident predictions.
+
+\paragraph{Systematic warm bias.}
+At full coverage the model exhibits near-zero bias ($-$0.05\,\textdegree C). As context is removed, a systematic warm bias emerges: $+$0.20\,\textdegree C at 25\%, $+$1.01\,\textdegree C at 10\%, and $+$1.81\,\textdegree C at 20~points. When the CNN receives too few observations to reconstruct the spatial temperature pattern, the elevation MLP's residual correction---trained to compensate for the difference between the coarse ERA5 grid-cell temperature and the fine-scale target---reverts toward a warm-biased default.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{../trained_models/final-2014-30e-5f/plots/sparse_analysis/metrics_vs_density_combined.png}
+    \caption{MAE, RMSE, CRPS, and Skill vs.\ number of context points for ERA5 on-grid (blue circles) and MeteoSwiss off-grid (red squares) input.}
+    \label{fig:metrics_vs_density}
+\end{figure}
+
+Figure~\ref{fig:metrics_vs_density} shows the degradation curves for both input types. The ERA5 on-grid curve exhibits a clear elbow around 25--50\% of the grid: above this range the model is near-optimal; below it, performance degrades rapidly.
+
+\subsection{Off-grid sparsity (MeteoSwiss target set)}
+
+\begin{table}[H]
+\centering
+\caption{Performance with sparse MeteoSwiss (off-grid) input. Maximum used: 176~points.}
+\label{tab:sparse_meteoswiss}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+\textbf{Input} & \textbf{Points} & \textbf{MAE} & \textbf{RMSE} & \textbf{Bias} & \textbf{CRPS} & \textbf{Skill} & \textbf{$\sigma$--err} \\
+                & & (\textdegree C) & (\textdegree C) & (\textdegree C) & (\textdegree C) & & corr \\
+\midrule
+\quad 20 pts  & 20  & 4.77 & 5.78 & $+$2.05 & 4.67 & $-$0.840 & $-$0.047 \\
+\quad 50 pts  & 50  & 3.54 & 4.24 & $+$2.26 & 3.44 & $-$0.356 & $-$0.178 \\
+\quad 80 pts  & 80  & 2.99 & 3.56 & $+$1.98 & 2.89 & $-$0.137 & $-$0.135 \\
+\quad 100 pts & 100 & 2.84 & 3.38 & $+$1.86 & 2.74 & $-$0.079 & $-$0.125 \\
+\quad 120 pts & 120 & 2.79 & 3.31 & $+$1.92 & 2.69 & $-$0.060 & $-$0.128 \\
+\quad 176 pts & 176 & 2.68 & 3.16 & $+$2.07 & 2.58 & $-$0.018 & $-$0.124 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table~\ref{tab:sparse_meteoswiss} presents results when the ERA5-Land grid is replaced entirely by MeteoSwiss metrics mapped onto the nearest ERA5 grid cell. This tests whether the model can operate from sparse, irregularly placed, off-grid measurements---a scenario closer to real-world station-based downscaling.
+
+\paragraph{Negative skill at all densities.}
+Even with all 176~available MeteoSwiss stations, the model achieves a skill of only $-$0.018---marginally worse than bilinear interpolation of the ERA5 field. At 20~stations the skill drops to $-$0.840. The model never outperforms the interpolation baseline in this configuration. Though this comparison is somewhat unfair: there is no real-time feed of a complete ERA5-Local grid; it only becomes available later after systemic and painstaking reanalysis.
+
+\paragraph{Persistent warm bias.}
+All MeteoSwiss configurations exhibit a large, stable warm bias between $+$1.86 and $+$2.26\,\textdegree C. Unlike the ERA5 on-grid case where the bias grows with sparsity, here the bias is approximately constant across all point counts. This suggests a systematic offset: MeteoSwiss stations, which are predominantly located in valleys and at lower elevations, provide a biased sample of the temperature field. The model, trained on full ERA5 grids, has no mechanism to correct for this sampling bias at inference time.
+
+\paragraph{Uninformative uncertainty.}
+The $\sigma$--error correlation is negative across all MeteoSwiss configurations ($-$0.05 to $-$0.18), meaning the model's predicted uncertainty is slightly \emph{anti}-correlated with the actual error. The model's uncertainty machinery, trained on dense gridded input, produces meaningless confidence estimates when the input distribution shifts to sparse off-grid points.
+
+\subsection{On-grid vs.\ off-grid at comparable point counts}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{../trained_models/final-2014-30e-5f/plots/sparse_analysis/bias_uncertainty_vs_density.png}
+    \caption{Left: mean bias vs.\ context density. The ERA5 bias grows from near-zero toward $+$1.8\,\textdegree C as points decrease; the MeteoSwiss bias remains around $+$2\,\textdegree C regardless of density. Right: $\sigma$--error correlation vs.\ density. On-grid prediction maintains informative uncertainty down to ${\sim}$25\% of the grid; off-grid uncertainty is never informative.}
+    \label{fig:bias_uncertainty}
+\end{figure}
+
+At matched point counts (20, 50, 80, 100, 120), the ERA5 on-grid and MeteoSwiss off-grid configurations yield surprisingly similar MAE values---within 0.02--0.22\,\textdegree C of each other. At very low counts (20--80~points), MeteoSwiss actually achieves slightly lower MAE than ERA5 on-grid (e.g.\ 4.77 vs.\ 4.93\,\textdegree C at 20~points), likely a bias introduced because MeteoSwiss points are actually used as ground truth. However, this MAE advantage does not translate to positive skill, because the MeteoSwiss configurations suffer from a much larger systematic bias (${\sim}$2\,\textdegree C vs.\ ${\sim}$1.4--1.8\,\textdegree C for ERA5 at the same counts).
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{../trained_models/final-2014-30e-5f/plots/sparse_analysis/calibration_vs_density.png}
+    \caption{Calibration metrics vs.\ input density. Left: standardised residual standard deviation ($z$-std; ideal~=~1). Centre: empirical 90\% prediction interval coverage (ideal~=~90\%). Right: Mean Absolute Calibration Error (MACE). The model is severely overconfident at all densities; overconfidence worsens as context becomes sparser.}
+    \label{fig:calibration_vs_density}
+\end{figure}
+
+Figure~\ref{fig:calibration_vs_density} confirms that the model's overconfidence, already identified at full coverage ($z$-std $\approx$ 8.7), worsens dramatically as input density decreases: $z$-std reaches 35 at 20~ERA5 points and 34 at 20~MeteoSwiss stations. The 90\% prediction interval coverage, already far below the nominal 90\% at full coverage (16.5\%), drops to 4.3\% at 20~ERA5 points. This reinforces that the Gaussian likelihood training objective does not produce well-calibrated uncertainties, and the miscalibration is amplified when the model operates outside its training distribution.
+
+Representative single-day prediction maps for all sparsity configurations---showing the progressive visual degradation of the input field, the model prediction, and the residual bias---are collected in Appendix~\ref{sec:sparse_predictions}.
 
 \section{Discussion of Results}
 

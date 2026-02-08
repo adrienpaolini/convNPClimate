@@ -687,6 +687,25 @@ If some gridded auxiliary predictors are available (e.g.\ ERA5-Local, etc) along
 \end{itemize}
 
 
+\section{Sparse Input Prediction Samples}
+\label{sec:sparse_predictions}
+
+The following figures show representative single-day predictions (fold~5) at selected sparsity levels, as evaluated in Section~\ref{sec:sparse}. Each row shows, from left to right: the (sparse) input field, the MeteoSwiss ground truth, the model prediction, and the residual bias.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{../trained_models/final-2014-30e-5f/plots/sparse_analysis/predictions_era5_sparsity.png}
+    \caption{ERA5 on-grid predictions at decreasing input density: 100\% (1\,769~pts), 50\% (885~pts), 25\% (442~pts), 10\% (177~pts), and 20~pts. The input field becomes visibly sparser while the model attempts to maintain spatial coherence; at 20~points the prediction degrades substantially.}
+    \label{fig:sparse_era5_predictions}
+\end{figure}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=\textwidth]{../trained_models/final-2014-30e-5f/plots/sparse_analysis/predictions_meteoswiss_sparsity.png}
+    \caption{MeteoSwiss off-grid predictions at decreasing station count: 176 (all available), 120, 80, 50, and 20~stations. The sparse station observations are snapped to the nearest ERA5 grid cell; large areas of the input field are unobserved (NaN). A warm bias is visible across all configurations.}
+    \label{fig:sparse_meteoswiss_predictions}
+\end{figure}
+
 \section{Glossary of Terms}
 
 \begin{description}

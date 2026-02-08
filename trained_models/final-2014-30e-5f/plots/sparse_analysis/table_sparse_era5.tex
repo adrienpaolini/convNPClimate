@@ -1,0 +1,22 @@
+\begin{table}[H]
+\centering
+\caption{Performance with sparse ERA5-Land grid input. The full grid has 1\,769~points.}
+\label{tab:sparse_era5}
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+\textbf{Input} & \textbf{Points} & \textbf{MAE} & \textbf{RMSE} & \textbf{Bias} & \textbf{CRPS} & \textbf{Skill} & \textbf{$\sigma$--err} \\
+& & (\textdegree C) & (\textdegree C) & (\textdegree C) & (\textdegree C) & & corr \\
+\midrule
+\quad 20 pts & 20 & 4.93 & 6.09 & $+$1.81 & 4.83 & -0.903 & 0.111 \\
+\quad 50 pts & 50 & 3.73 & 4.66 & $+$1.73 & 3.63 & -0.430 & -0.012 \\
+\quad 80 pts & 80 & 3.20 & 4.02 & $+$1.69 & 3.10 & -0.223 & -0.023 \\
+\quad 100 pts & 100 & 2.99 & 3.75 & $+$1.59 & 2.89 & -0.140 & -0.026 \\
+\quad 120 pts & 120 & 2.77 & 3.48 & $+$1.43 & 2.67 & -0.052 & -0.010 \\
+\quad 10% (177) & 177 & 2.27 & 2.86 & $+$1.01 & 2.17 & 0.144 & -0.002 \\
+\quad 25% (442) & 442 & 1.51 & 1.93 & $+$0.20 & 1.41 & 0.446 & 0.272 \\
+\quad 50% (884) & 884 & 1.36 & 1.77 & $+$0.01 & 1.26 & 0.505 & 0.668 \\
+\quad 90% (1592) & 1592 & 1.31 & 1.72 & $-$0.04 & 1.21 & 0.522 & 0.736 \\
+\quad 100% (1769) & 1769 & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 & 0.740 \\
+\bottomrule
+\end{tabular}
+\end{table}
