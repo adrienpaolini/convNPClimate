@@ -114,8 +114,10 @@ def load_model_checkpoint(
     # Load weights
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
-    # TODO: improve this comment, make it more understandable
-    # Handle potential 'module.' prefix from DataParallel
+    # When a model is trained with nn.DataParallel, PyTorch saves each key in
+    # the state dict with a 'module.' prefix (e.g. 'module.decoder.weight').
+    # Since we load onto a plain (non-DataParallel) model, we need to strip
+    # that prefix so the keys match the model's own parameter names.
     state_dict = checkpoint['model_state_dict']
     if list(state_dict.keys())[0].startswith('module.'):
         state_dict = OrderedDict([
