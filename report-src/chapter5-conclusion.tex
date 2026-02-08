@@ -29,12 +29,15 @@
 \begin{itemize}
     \item Direct inclusion of geopotential into the CNN channels.
     \item Integration of wind fields, aspect, terrain cover, and humidity.
-    \item Exploration of precipitation prediction.
+    \item Other avenues for exploration: predicting precipitation (also explored by Vaughan~2022, fully excluded from this project)
     \item Include year - not relevant if using short periods in training, but more relevant over the course of many decades, to allow climate change to be picked up by the model (glacier melt is a relevant factor).
-    \item Include TPI at different resolution
+    \item switch to hourly datasets and include time-of-day embeddings - this will likely be needed if the SDSC wishes to take this technology in the direction of real-time predictions based on the metrics feed coming from weather stations.
+    \item Include TPI at both 500m and 2000m resolution; the local and wider topographic information may be relevant for climate effects (e.g. a hill inside a deep valley vs a hill on a plains)
+    \item Include a temporal window of grids. Instead of z grids encoding a single timestamp, we can have multiple dimensions of z, covering progression. While the current problem this model tries to solve is "take these points and infill the rest", it can combine with "take this progression, and predict what comes next". This may help the model track movement of hot/cold air fronts for example.
     \item Include geopotential directly as a channel into the CNN!
     \item Model is notoriously missing any atmospheric data like wind fields. More promising ones: aspect, terrain cover, diurnal cycles, humidity, orographic features
-    \item Other avenues for exploration: predicting precipitation (also explored by Vaughan 2022, fully excluded from this project)
     \item Explore if a larger elevation MLP would perform better. Perhaps we need higher dimensionality to capture the needs for reducing overconfidence.
+    \item Improving the model for out-of-grid predictions - this is needed for the next phase: predicting using sparse data, coming from weather stations.
+    \item (Quality of life) Make it possible to resume a training from the middle of a fold. Renku is not stable enough to allow multi-day training rounds without hiccups.
 \end{itemize}
 }
