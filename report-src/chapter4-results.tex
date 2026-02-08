@@ -85,7 +85,7 @@ Here are visualizations of the errors, error bias, CRPS and skill for the baseli
 \quad \texttt{2023-10e-5f}   & 2.09 & 2.67 & $+$0.66 & 1.90 & 0.245 \\
 \quad \texttt{2023-30e-5f}   & 1.64 & 2.08 & $+$0.24 & 1.49 & 0.410 \\
 \quad \texttt{2023-100e-5f}  & 1.62 & 2.05 & $+$0.25 & 1.48 & 0.415 \\
-\quad \texttt{2014-30e-5f}   & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 \\
+\quad \texttt{2014-30e-5f}  (base model)   & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 \\
 \midrule
 \bottomrule
 \end{tabular}
@@ -164,7 +164,7 @@ We can observe the colder months (November--March) observe a higher incidence of
                 & (\textdegree C) & (\textdegree C) & (\textdegree C) & (\textdegree C) & \\
 \midrule
 \multicolumn{6}{@{}l}{\textit{Primary model (2014--2023)}} \\
-\quad \texttt{2014-30e-5f}   & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 \\
+\quad \texttt{2014-30e-5f}  (base model)   & 1.31 & 1.71 & $-$0.05 & 1.21 & 0.524 \\
 \midrule
 \multicolumn{6}{@{}l}{\textit{Ablation models (2014--2023)}} \\
 \quad \texttt{-ablation-elevation}\textsuperscript{$\dagger$}
@@ -178,7 +178,7 @@ We can observe the colder months (November--March) observe a higher incidence of
 \end{tabular}
 \begin{flushleft}
 \textsuperscript{$\dagger$}\small Without the elevation MLP, the model produced errors orders of magnitude above physical plausibility (MAE~$\approx$~802\,\textdegree C), indicating that the topographic correction stage is essential for meaningful predictions. (This is unexpected, we would expect some degree of interpolation to still take place.) \\[2pt]
-\textsuperscript{$\ddagger$}\small These two ablations produced bit-identical metrics across all evaluation categories, despite differing in whether seasonal features are present in the CNN input. Surprisingly, both of them present a higher skill than the base model..
+\textsuperscript{$\ddagger$}\small These two ablations produced bit-identical metrics across all evaluation categories, despite differing in whether seasonal features are present in the CNN input. Surprisingly, both of them present a higher skill than the base model.
 \end{flushleft}
 \end{table}
 
