@@ -2,7 +2,7 @@
 
 Convolutional Conditional Neural Processes (ConvCNPs) for statistical downscaling of 2-meter temperature from coarse ERA5-Land reanalysis (~11 km) to fine-resolution MeteoSwiss ground truth over Switzerland. Built upon [Vaughan et al. (2022)](https://gmd.copernicus.org/preprints/gmd-2020-420/).
 
-This project was conducted during the 2025/26 Fall semester as a capstone project for a Diploma in Advanced Studies at ETH Zürich, under the supervision of Dr. Christian Donner from the Swiss Data Science Center. Read the [full report](report.pdf).
+This project was conducted during the 2025/26 Fall semester as a capstone project for a Diploma in Advanced Studies at ETH Zürich, under the expert supervision of Dr. Christian Donner from the Swiss Data Science Center. Read the [full report](report.pdf) with in-depth analysis, reproducibility guidance and instructions on how to expand the models.
 
 ## Downscaling in Practice
 
@@ -23,7 +23,7 @@ A key practical question is how the model performs when input data is incomplete
 The ConvCNP operates in three stages:
 
 1. **Encode** — context observations are mapped onto a discretized grid via a set convolution with RBF kernels
-2. **Process** — a UNet/ResNet CNN refines the gridded representation, learning translation-equivariant spatial patterns
+2. **Process** — a CNN refines the gridded representation, learning translation-equivariant spatial patterns
 3. **Decode** — an elevation-aware MLP maps the learned features plus local topography (elevation, TPI) to Gaussian distribution parameters (mean + uncertainty) at each target location
 
 Training uses 5-fold cross-validation over 10 years of daily data (2014-2023), with each fold holding out a contiguous ~2-year period.
