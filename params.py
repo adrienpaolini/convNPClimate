@@ -65,6 +65,9 @@ class Params:
         assert self.LR > 0, "LR must be positive"
         assert self.VARIABLE in ('tmax', 'precip'), f"Unknown VARIABLE: {self.VARIABLE}"
         assert self.RUN_TYPE in ('local', 'cloud'), f"Unknown RUN_TYPE: {self.RUN_TYPE}"
+        assert (not (not self.SEASONAL_FEATURES and self.SEASONAL_FEATURES_IN_MLP),
+                "SEASONAL_FEATURES_IN_MLP cannot be True if SEASONAL_FEATURES (master switch) is False")
+
 
         import torch
         if isinstance(self.DEVICE, str):
