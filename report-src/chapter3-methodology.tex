@@ -351,16 +351,16 @@ Each evaluation run---covering all five cross-validation folds---produces a JSON
 
     \item[Correlations.] Pearson correlations between predicted uncertainty~($\sigma$) and absolute error, between altitude and error, between mTPI and error, and between day-of-year and error.
 
-    \item[Calibration.] Probability Integral Transform (PIT) mean and standard deviation, observed coverage at the 50\%, 90\%, and 95\% nominal levels, the Kolmogorov--Smirnov $p$-value, and the Mean Absolute Calibration Error (MACE).
+    \item[Calibration.] Probability Integral Transform (PIT) mean and standard deviation, observed coverage at the 50\%, 90\%, and 95\% nominal levels, the Kolmogorov--Smirnov $p$-value, and the Mean Absolute Calibration Error (MACE), to track the reliability of the uncertainty estimates.
 \end{description}
 
 \subsection{Predictions on sparse gridded input}
 
-For gridded input, a sparse grid of ERA5-Local was offered the model as input to predict the full target grid. Different sparsity levels were captured.
+For gridded input, a sparse grid of ERA5-Land was offered the model as input to predict the full target grid. Different sparsity levels were captured.
 
 \subsection{Predictions on sparse out-of-grid input}
 
-For out-of-grid input (sampled from the MeteoSwiss target dataset), the points are regridded onto the training grid (ERA5-Local) and then fed to the model for full target grid prediction. Given the rugged Swiss topography, this approach is expected to cause a massive reduction in model performance.
+For out-of-grid input (sampled from the MeteoSwiss target dataset), the points are regridded onto the training grid (ERA5-Land) and then fed to the model for full target grid prediction. Given the rugged Swiss topography, this approach is expected to cause a massive reduction in model performance.
 
 Please see section \ref{sec:out-of-grid} in the Appendix for considerations on how to better handle out-of-grid inputs.
 

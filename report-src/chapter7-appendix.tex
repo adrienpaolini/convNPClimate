@@ -131,7 +131,7 @@ The following modules, located at the repository root, were developed as part of
   \end{itemize}
 
   \item[\texttt{model\_factory.py}]
-  A factory function \texttt{build\_model()} that constructs the full model stack from a \texttt{Params} object. It returns a \texttt{(model, loss\_fn, get\_value\_fn)} tuple, abstracting the differences between temperature and precipitation model variants. Also provides \texttt{load\_model\_checkpoint()} for restoring trained models. This module allows consistent use across training and prediction. At training time we persist the metadata.json hyperparameters, and at training we use it to recreate and load the model. 
+  A factory function \texttt{build\_model()} that constructs the full model stack from a \texttt{Params} object. It returns a \texttt{(model, loss\_fn, get\_value\_fn)} tuple, abstracting the differences between temperature and precipitation model variants. Also provides \texttt{load\_model\_checkpoint()} for restoring trained models. This module allows consistent use across training and prediction. At training time we persist the metadata.json hyperparameters, and at inference time we use it to recreate and load the model. 
 
   \item[\texttt{inference.py}]
   Provides \texttt{predict\_single\_day()} for generating and denormalizing predictions for a single day and \texttt{predict\_holdout\_fold()} for doing the same across all holdout days in a cross-validation fold.
@@ -671,7 +671,7 @@ Use an external spatial interpolation method (kriging, optimal interpolation, in
 
 \subsubsection{Option 4: Dual-Stream Architecture}
 
-If some gridded auxiliary predictors are available (e.g.\ ERA5-Local, etc) alongside station observations, keep the existing CNN path for the gridded data but add a parallel point-data encoder (set convolution or attention-based) for the station values. Fuse the two representations on the grid before the decoder.
+If some gridded auxiliary predictors are available (e.g.\ ERA5-Land, etc) alongside station observations, keep the existing CNN path for the gridded data but add a parallel point-data encoder (set convolution or attention-based) for the station values. Fuse the two representations on the grid before the decoder.
 
 \paragraph{Pros.}
 \begin{itemize}
