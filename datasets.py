@@ -121,6 +121,7 @@ def load_era5_data(
     geopotential_glob: Path | str | None = None,
     geopotential_var_name: str = 'z',
     include_seasonal_embeddings = True,
+    include_altitude = True,
     device: torch.device | None = None,
 ) -> Tuple[torch.Tensor, Era5Metadata, torch.Tensor | None, np.ndarray]:
     """
@@ -292,6 +293,20 @@ def load_era5_data(
         # altitude_tensor = torch.from_numpy(altitude.values.astype(np.float32)).to(device)
         # print(f"Altitude tensor shape: {altitude_tensor.shape}, dtype: {altitude_tensor.dtype}")
 
+    if include_altitude:
+        # Normalize altitude to 0-1 range
+        altitude_min = float(altitude.min())
+        altitude_max = float(altitude.max())
+        altitude_range = altitude_max - altitude_min
+        if altitude_range > 0:
+            altitude_norm = (altitude - altitude_min) / altitude_range
+        else:
+            altitude_norm = altitude
+
+        altitude_channel, _ = xr.broadcast(altitude_norm, norm_data)
+        channel_list.append(altitude_channel)
+        channel_names.append('altitude')
+    
     return tensor_Z, stats, altitude, time_coords
 
 
