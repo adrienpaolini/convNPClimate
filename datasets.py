@@ -290,22 +290,22 @@ def load_era5_data(
         print(f"Converted geopotential to altitude (m). Range: [{float(altitude.min()):.1f}, {float(altitude.max()):.1f}] m")
 
         # Convert to torch tensor
-        # altitude_tensor = torch.from_numpy(altitude.values.astype(np.float32)).to(device)
-        # print(f"Altitude tensor shape: {altitude_tensor.shape}, dtype: {altitude_tensor.dtype}")
+        altitude_tensor = torch.from_numpy(altitude.values.astype(np.float32)).to(device)
+        print(f"Altitude tensor shape: {altitude_tensor.shape}, dtype: {altitude_tensor.dtype}")
 
     if include_altitude:
         # Normalize altitude to 0-1 range
-        altitude_min = float(altitude.min())
-        altitude_max = float(altitude.max())
+        altitude_min = float(altitude_tensor.min())
+        altitude_max = float(altitude_tensor.max())
         altitude_range = altitude_max - altitude_min
         if altitude_range > 0:
-            altitude_norm = (altitude - altitude_min) / altitude_range
+            altitude_norm = (altitude_tensor - altitude_min) / altitude_range
         else:
-            altitude_norm = altitude
+            altitude_norm = altitude_tensor
 
-        altitude_channel, _ = xr.broadcast(altitude_norm, norm_data)
-        channel_list.append(altitude_channel)
-        channel_names.append('altitude')
+        altitude_channel = altitude_norm.unsqueeze(0).unsqueeze(0).expand(tensor_Z.shape[0], 1, -1, -1)
+        tensor_Z = torch.cat([tensor_Z, altitude_channel], dim=1)  # now (time, 6, lat, lon)
+        print(f"Added altitude channel. New tensor_Z shape: {tensor_Z.shape}")
     
     return tensor_Z, stats, altitude, time_coords
 
