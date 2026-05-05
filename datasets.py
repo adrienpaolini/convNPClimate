@@ -121,6 +121,7 @@ def load_era5_data(
     geopotential_glob: Path | str | None = None,
     geopotential_var_name: str = 'z',
     include_seasonal_embeddings = True,
+    include_altitude = True,
     device: torch.device | None = None,
 ) -> Tuple[torch.Tensor, Era5Metadata, torch.Tensor | None, np.ndarray]:
     """
@@ -230,7 +231,7 @@ def load_era5_data(
 
     # Use float32 consistently - the model and mask generation use float32
     tensor_Z = torch.from_numpy(tensor_Z.values.astype(np.float32)).to(device)
-    print(f"Final tensor_Z torch tensor with shape (time, channel, lat, lon): {tensor_Z.shape}, dtype: {tensor_Z.dtype}")
+    print(f"tensor_Z torch tensor with shape (time, channel, lat, lon): {tensor_Z.shape}, dtype: {tensor_Z.dtype}")
 
     # Load geopotential and convert to altitude if provided
     altitude_tensor, altitude = None, None
@@ -289,9 +290,24 @@ def load_era5_data(
         print(f"Converted geopotential to altitude (m). Range: [{float(altitude.min()):.1f}, {float(altitude.max()):.1f}] m")
 
         # Convert to torch tensor
-        # altitude_tensor = torch.from_numpy(altitude.values.astype(np.float32)).to(device)
-        # print(f"Altitude tensor shape: {altitude_tensor.shape}, dtype: {altitude_tensor.dtype}")
+        altitude_tensor = torch.from_numpy(altitude.values.astype(np.float32)).to(device)
+        print(f"Altitude tensor shape: {altitude_tensor.shape}, dtype: {altitude_tensor.dtype}")
 
+    if include_altitude:
+        print("Adding altitude as input channel")
+        # Normalize altitude to 0-1 range
+        altitude_min = float(altitude_tensor.min())
+        altitude_max = float(altitude_tensor.max())
+        altitude_range = altitude_max - altitude_min
+        if altitude_range > 0:
+            altitude_norm = (altitude_tensor - altitude_min) / altitude_range
+        else:
+            altitude_norm = altitude_tensor
+
+        altitude_channel = altitude_norm.unsqueeze(0).unsqueeze(0).expand(tensor_Z.shape[0], 1, -1, -1)
+        tensor_Z = torch.cat([tensor_Z, altitude_channel], dim=1)
+        print(f"Added altitude channel. Final tensor_Z shape: {tensor_Z.shape}")
+    
     return tensor_Z, stats, altitude, time_coords
 
 
