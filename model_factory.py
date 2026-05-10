@@ -128,24 +128,14 @@ def build_smacnp(params: Params, input_dim: int) -> tuple[nn.Module, LossFn, Get
 
     return model, gll, get_value_tmax
 
-def load_model_checkpoint(
-    checkpoint_path: Path,
-    p: Params,
-    device: torch.device
-) -> tuple[nn.Module, int]:
-    """
-    Load a trained model from checkpoint.
-
-    Args:
-        checkpoint_path: Path to the saved checkpoint file.
-        p: Training parameters used to build the model architecture.
-        device: Torch device to load the model onto.
-
-    Returns:
-        Tuple of (model, epoch) where epoch is the training epoch of the checkpoint.
-    """
-    # Build model architecture using shared factory
-    model, _, _ = build_model(p)
+def load_model_checkpoint(checkpoint_path, p, device, input_dim=None):
+    if p.MODEL_TYPE == 'smacnp':
+        if input_dim is None:
+            raise ValueError("input_dim required for SMACNP — pass x_context.shape[-1]")
+        model, _, _ = build_smacnp(p, input_dim)
+    else:
+        model, _, _ = build_model(p)
+    
     model.to(device)
 
     # Load weights

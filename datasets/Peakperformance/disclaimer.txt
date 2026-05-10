@@ -1,0 +1,3 @@
+Disclaimer:
+
+The dataset is published under the Creative Commons Licence CC BY 4.0. Reproduction and redistribution of the data is only permitted with proper attribution (source: MeteoSwiss).

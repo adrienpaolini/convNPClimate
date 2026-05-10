@@ -1,0 +1,35 @@
+{
+  "config": {
+    "model_name": "test-2023-30e-5f-smacnp",
+    "model_type": "smacnp",
+    "n_folds": 5,
+    "holdout_days": 365
+  },
+  "overall": {
+    "mae": 1.6859521865844727,
+    "rmse": 2.079514265060425,
+    "bias": 0.8359960317611694,
+    "crps": 1.5822544826953422,
+    "skill_score": 0.3725681662838135
+  },
+  "correlations": {
+    "uncertainty_error": 0.6273551903119741,
+    "altitude_error": 0.7954198361284454,
+    "mtpi_error": -0.0017082402523952728,
+    "doy_error": 0.21435382389511
+  },
+  "calibration": {
+    "pit_mean": 0.34661836458635537,
+    "pit_std": 0.4528765866737161,
+    "z_std": 10.046144485473633,
+    "coverage_50": 0.05129975422338754,
+    "coverage_90": 0.12463126177642948,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.4557797616359774,
+    "coverage_at_50": 0.05073894254480541,
+    "coverage_at_90": 0.12150489647297953,
+    "coverage_at_95": 0.14259037172613062
+  }
+}
