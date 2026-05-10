@@ -17,6 +17,8 @@ from convCNP.models.elev_models import TmaxBiasConvCNPElev, GammaBiasConvCNPElev
 from convCNP.models.cnn import CNN, ResConvBlock
 from convCNP.training.loss_functions import gll, gamma_ll
 from convCNP.training.utils import get_value_tmax
+from convCNP.models.smacnp import SMACNP_ALL
+
 
 
 LossFn = Callable
@@ -90,6 +92,41 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
 
     return model, loss_fn, get_value_fn
 
+def build_smacnp(params: Params, input_dim: int) -> tuple[nn.Module, LossFn, GetValueFn]:
+    """
+    Build the SMACNP temperature model.
+
+    Parameters
+    ----------
+    params    : Params dataclass (uses R_DIM, W_DIM, V_DIM, N_HEADS, etc.)
+    input_dim : total columns in x_context / x_target
+                (spatial_dim=2 always assumed; attr_dim = input_dim - 2)
+    """
+    if params.VARIABLE != 'tmax':
+        raise ValueError("SMACNP currently supports only VARIABLE='tmax'.")
+
+    attr_dim = input_dim - 2   # spatial_dim is always 2
+
+    model = SMACNP_ALL(
+        input_dim=input_dim,
+        spatial_dim=2,
+        attr_dim=attr_dim,           
+        y_dim=1,
+        r_dim=params.R_DIM,
+        w_dim=params.W_DIM,
+        v_dim=params.V_DIM,
+        hidden_size=params.SMACNP_HIDDEN,       
+        num_heads=params.N_HEADS,               
+        dropout_rate=0.0,                       
+        spatial_indices=[0, 1],                 
+        use_positional_encoding=params.USE_PE,  
+        pe_dim=params.PE_DIM,
+    )
+
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    print(f"Built SMACNP with {n_params:,} trainable parameters")
+
+    return model, gll, get_value_tmax
 
 def load_model_checkpoint(
     checkpoint_path: Path,

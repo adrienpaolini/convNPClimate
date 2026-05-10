@@ -58,6 +58,17 @@ class Params:
     METEO_SWISS_MAX_TEMP_GLOB: str | None = None
     HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
 
+    # SMACNP architecture parameters (only used when MODEL_TYPE='smacnp')
+    MODEL_TYPE: Literal['convcnp', 'smacnp'] = 'convcnp'
+    R_DIM:   int   = 128    # mean-attribute representation dimension
+    W_DIM:   int   = 128    # mean-location representation dimension
+    V_DIM:   int   = 128    # variance representation dimension
+    N_HEADS: int   = 4      # attention heads
+    SMACNP_HIDDEN: int = 128  # MLP hidden width in encoders/decoders
+    USE_PE:  bool  = True   # sinusoidal positional encoding
+    PE_DIM:  int   = 32     # positional encoding output dimension
+
+
     def __post_init__(self):
         assert self.N_EPOCHS > 0, "N_EPOCHS must be positive"
         assert self.BATCH_SIZE > 0, "BATCH_SIZE must be positive"

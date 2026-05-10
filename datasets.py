@@ -888,3 +888,134 @@ def interpolate_era5_to_targets(
     )
     # interpolated shape: (time, 1, 1, n_points) -> squeeze to (time, n_points)
     return interpolated.squeeze(1).squeeze(1)
+
+def build_smacnp_context(
+    era5_tensor: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Reformat the ERA5 grid tensor into SMACNP point-format context arrays.
+
+    Flattens the (lat, lon) grid into N = lat*lon individual context points.
+    ERA5 grid cells serve as the context set; their temperature values are
+    the observations y_context, and their spatial/topographic attributes
+    form x_context.
+
+    Assumes era5_tensor was produced by load_era5_data() with
+    include_seasonal_embeddings=True and include_altitude=True, giving
+    channels [temp, lat_norm, lon_norm, cos_doy, sin_doy, alt_norm].
+
+    Parameters
+    ----------
+    era5_tensor : (T, 6, lat, lon)  — output of load_era5_data()
+
+    Returns
+    -------
+    x_context : (T, N, 6)
+        Context point attributes per time step.
+        Columns: [lat_norm, lon_norm, alt_norm, mTPI_norm=0, cos_doy, sin_doy]
+    y_context : (T, N, 1)
+        Normalized ERA5 temperature at each grid cell.
+    """
+    T, C, n_lat, n_lon = era5_tensor.shape
+    N = n_lat * n_lon
+
+    # --- y_context: temperature channel, flattened ---
+    # era5_tensor[:, 0, :, :] → (T, lat, lon) → (T, N)
+    y_context = era5_tensor[:, 0, :, :].reshape(T, N, 1)   # (T, N, 1)
+
+    # --- Static spatial attributes: same for every time step ---
+    # Take first time step (lat/lon/alt don't change over time)
+    lat_flat = era5_tensor[0, 1, :, :].reshape(N)           # (N,)
+    lon_flat = era5_tensor[0, 2, :, :].reshape(N)           # (N,)
+    alt_flat = era5_tensor[0, 5, :, :].reshape(N)           # (N,) already in [0,1]
+    mTPI_flat = torch.zeros(N, device=era5_tensor.device)   # (N,) — zero for coarse grid
+
+    # Stack static attrs: (N, 4) = [lat, lon, alt, mTPI]
+    static_attrs = torch.stack([lat_flat, lon_flat, alt_flat, mTPI_flat], dim=1)
+    # Expand across time: (T, N, 4)
+    static_attrs = static_attrs.unsqueeze(0).expand(T, -1, -1)
+
+    # --- Time-varying seasonal features ---
+    # cos/sin are broadcast across spatial dims in era5_tensor; take any cell
+    cos_doy = era5_tensor[:, 3, 0, 0]                       # (T,)
+    sin_doy = era5_tensor[:, 4, 0, 0]                       # (T,)
+    # Expand to (T, N, 2)
+    seasonal = torch.stack([cos_doy, sin_doy], dim=1)       # (T, 2)
+    seasonal = seasonal.unsqueeze(1).expand(-1, N, -1)       # (T, N, 2)
+
+    # --- Combine into x_context (T, N, 6) ---
+    x_context = torch.cat([static_attrs, seasonal], dim=-1)  # (T, N, 6)
+
+    return x_context, y_context
+
+def build_smacnp_targets(
+    target_x: xr.DataArray,
+    target_y_da: xr.DataArray,
+    elev_tensor: torch.Tensor,
+    seasonal_tensor: torch.Tensor,
+    device: torch.device | None = None,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Reformat MeteoSwiss targets into SMACNP point-format target arrays.
+
+    Parameters
+    ----------
+    target_x       : xr.DataArray (point, 2)    — normalized [lat, lon]
+                      from prepare_meteoswiss_targets()
+    target_y_da    : xr.DataArray (time, point)  — normalized temperature
+                      from prepare_meteoswiss_targets()
+    elev_tensor    : torch.Tensor (point, 3)     — [true_elev_m, elev_diff_m, mTPI_m]
+                      from prepare_meteoswiss_targets()
+    seasonal_tensor: torch.Tensor (T, 2)         — [cos_doy, sin_doy]
+                      from compute_seasonal_features()
+    device         : torch.device (optional)
+
+    Returns
+    -------
+    x_target : (T, M, 6)
+        Target point attributes per time step.
+        Columns: [lat_norm, lon_norm, alt_norm, mTPI_norm, cos_doy, sin_doy]
+    y_target : (T, M)
+        Normalized MeteoSwiss temperature observations.
+    """
+    if device is None:
+        device = torch.device('cpu')
+
+    M = elev_tensor.shape[0]
+    T = seasonal_tensor.shape[0]
+
+    # --- Spatial coordinates ---
+    lat_norm = torch.from_numpy(
+        target_x.sel(coord='lat').values.astype(np.float32)
+    ).to(device)                                             # (M,)
+    lon_norm = torch.from_numpy(
+        target_x.sel(coord='lon').values.astype(np.float32)
+    ).to(device)                                             # (M,)
+
+    # --- Elevation attributes (normalize to [0, 1]) ---
+    true_elev = elev_tensor[:, 0].to(device)                # (M,) in metres
+    mTPI      = elev_tensor[:, 2].to(device)                # (M,) in metres
+
+    alt_min, alt_max = true_elev.min(), true_elev.max()
+    alt_norm = (true_elev - alt_min) / (alt_max - alt_min + 1e-8)   # (M,)
+
+    mTPI_min, mTPI_max = mTPI.min(), mTPI.max()
+    mTPI_norm = (mTPI - mTPI_min) / (mTPI_max - mTPI_min + 1e-8)    # (M,)
+
+    # --- Static attributes: (T, M, 4) ---
+    static_attrs = torch.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], dim=1)  # (M, 4)
+    static_attrs = static_attrs.unsqueeze(0).expand(T, -1, -1)                    # (T, M, 4)
+
+    # --- Seasonal features: (T, M, 2) ---
+    seasonal = seasonal_tensor.to(device)                    # (T, 2)
+    seasonal = seasonal.unsqueeze(1).expand(-1, M, -1)       # (T, M, 2)
+
+    # --- Combine: (T, M, 6) ---
+    x_target = torch.cat([static_attrs, seasonal], dim=-1)
+
+    # --- y_target: (T, M) ---
+    y_target = torch.from_numpy(
+        target_y_da.values.astype(np.float32)
+    ).to(device)                                             # (T, M)
+
+    return x_target, y_target

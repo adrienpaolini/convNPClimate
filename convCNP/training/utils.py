@@ -101,6 +101,59 @@ def get_fold_data(inds, context, targets, shuffle=True, batch_size=16, seasonal=
 
     return training_data, held_out
 
+def get_fold_data_smacnp(inds, x_context, y_context, x_target, y_target,
+                          shuffle=True, batch_size=16):
+    """
+    Split point-format SMACNP data into training and held-out folds.
+
+    Parameters
+    ----------
+    inds      : (start, end) held-out slice
+    x_context : (T, N, input_dim)  context attributes (ERA5 grid cells)
+    y_context : (T, N, 1)          context observations (ERA5 temperature)
+    x_target  : (T, M, input_dim) or (M, input_dim)  target attributes
+    y_target  : (T, M)             target observations (station temperature)
+    shuffle   : whether to shuffle time axis
+    batch_size: number of time steps per batch
+
+    Returns
+    -------
+    training_data, held_out  — lists of task dicts with keys:
+        'x_context', 'y_context', 'x_target', 'y_target'
+    """
+    # Broadcast static target attributes across time if needed
+    if x_target.dim() == 2:
+        x_target = x_target.unsqueeze(0).expand(x_context.shape[0], -1, -1)
+
+    def _split(arr, start, end):
+        train = torch.cat([arr[:start], arr[end:]], dim=0)
+        held  = arr[start:end]
+        return train, held
+
+    xc_tr, xc_ho = _split(x_context, *inds)
+    yc_tr, yc_ho = _split(y_context, *inds)
+    xt_tr, xt_ho = _split(x_target,  *inds)
+    yt_tr, yt_ho = _split(y_target,  *inds)
+
+    if shuffle:
+        idx = torch.randperm(xc_tr.shape[0])
+        xc_tr, yc_tr, xt_tr, yt_tr = xc_tr[idx], yc_tr[idx], xt_tr[idx], yt_tr[idx]
+        idx = torch.randperm(xc_ho.shape[0])
+        xc_ho, yc_ho, xt_ho, yt_ho = xc_ho[idx], yc_ho[idx], xt_ho[idx], yt_ho[idx]
+
+    def _to_batches(xc, yc, xt, yt):
+        xc_b = torch.split(xc, batch_size)
+        yc_b = torch.split(yc, batch_size)
+        xt_b = torch.split(xt, batch_size)
+        yt_b = torch.split(yt, batch_size)
+        return [{'x_context': xc_b[i], 'y_context': yc_b[i],
+                 'x_target':  xt_b[i], 'y_target':  yt_b[i]}
+                for i in range(len(yt_b))]
+
+    return _to_batches(xc_tr, yc_tr, xt_tr, yt_tr), \
+           _to_batches(xc_ho, yc_ho, xt_ho, yt_ho)
+
+
 def make_r_mask(target_vals):
     """
     Make the r mask for the Bernoulli precipitation distribution

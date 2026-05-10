@@ -11,7 +11,7 @@ import os
 import scipy
 from scipy.stats import NearConstantInputWarning
 import warnings
-from .utils import log_exp, generate_context_mask, get_fold_data
+from .utils import log_exp, generate_context_mask, get_fold_data, get_fold_data_smacnp
 
 
 def get_fold_holdout_indices(fold: int, n_folds: int, n_samples: int) -> tuple:
@@ -319,4 +319,142 @@ def train_elev(model,
             # Early stopping check
             if patience is not None and epochs_without_improvement >= patience:
                 print(f'Early stopping fold {fold} at epoch {epoch}: no improvement for {patience} epochs')
+                break
+
+def train_batch_smacnp(task, opt, model, ll, device=None):
+    """
+    Train one SMACNP batch.
+
+    task keys: 'x_context' (B,N,D), 'y_context' (B,N,1),
+               'x_target'  (B,M,D), 'y_target'  (B,M)
+    """
+    v   = model(task['x_context'], task['y_context'], task['x_target'])
+    obj = -ll(task['y_target'], v)
+    obj.backward()
+    opt.step()
+    opt.zero_grad()
+    return obj, opt, model
+
+
+def train_epoch_smacnp(model, opt, training_data, ll, device=None):
+    """Outer loop over batches for one epoch."""
+    model.train()
+    batch_objs = []
+    for task in training_data:
+        obj, opt, model = train_batch_smacnp(task, opt, model, ll, device=device)
+        batch_objs.append(float(obj.item()))
+    return np.mean(np.array(batch_objs)[-5:])
+
+
+def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
+    """Evaluate NLL and point metrics on the held-out fold."""
+    model.eval()
+    targets_list, preds_list = [], []
+
+    with torch.no_grad():
+        for task in held_out:
+            preds_list.append(model(task['x_context'],
+                                    task['y_context'],
+                                    task['x_target']))
+            targets_list.append(task['y_target'])
+
+    predictions     = torch.cat(preds_list)
+    targets_complete = torch.cat(targets_list)
+
+    eval_ll = -ll(targets_complete, predictions)
+    predictions = get_value(predictions)
+
+    n_stations = predictions.shape[1]
+    maes, pearsons, spearmans = (np.zeros(n_stations) for _ in range(3))
+
+    for st in range(n_stations):
+        true = targets_complete[:, st].detach().cpu().numpy()
+        pred = predictions[:, st].detach().cpu().numpy()
+        mask = ~np.isnan(true)
+        true, pred = true[mask], pred[mask]
+        if len(true) < 2:
+            maes[st] = pearsons[st] = spearmans[st] = np.nan
+            continue
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                maes[st]      = np.mean(np.abs(true - pred))
+                pearsons[st]  = scipy.stats.pearsonr(pred, true)[0]
+                spearmans[st] = scipy.stats.spearmanr(pred, true).correlation
+        except Exception:
+            maes[st] = pearsons[st] = spearmans[st] = np.nan
+
+    return (eval_ll,
+            np.nanmedian(maes),
+            np.nanmedian(pearsons),
+            np.nanmedian(spearmans))
+
+
+def train_smacnp(model, opt, ll, x_context, y_context, x_target, y_target,
+                 output_dir, get_value, fold, n_folds,
+                 n_epochs=100, batch_size=16, patience=10,
+                 stats_file=None, device=None):
+    """
+    Top-level SMACNP training loop. Mirrors train_elev() in structure.
+
+    Parameters
+    ----------
+    x_context : (T, N, input_dim)
+    y_context : (T, N, 1)
+    x_target  : (T, M, input_dim) or (M, input_dim)
+    y_target  : (T, M)
+    """
+    if not stats_file:
+        raise ValueError("Please provide a stats_file.")
+
+    best_obj = float('inf')
+    epochs_without_improvement = 0
+    fold_start_time = time.time()
+    epoch_durations = []
+
+    with open(stats_file, 'a') as f:
+        writer = csv.writer(f)
+
+        for epoch in range(n_epochs):
+            epoch_start = time.time()
+
+            n_samples = x_context.shape[0]
+            start, end = get_fold_holdout_indices(fold, n_folds, n_samples)
+
+            training_data, held_out = get_fold_data_smacnp(
+                (start, end), x_context, y_context, x_target, y_target,
+                batch_size=batch_size
+            )
+
+            train_obj = train_epoch_smacnp(model, opt, training_data, ll, device=device)
+            test_obj, med_mae, med_pears, med_spear = eval_epoch_smacnp(
+                model, held_out, ll, get_value, device=device)
+
+            epoch_dur = time.time() - epoch_start
+            epoch_durations.append(epoch_dur)
+            elapsed   = time.time() - fold_start_time
+            remaining = np.mean(epoch_durations) * (n_epochs - epoch - 1)
+
+            print(f"Fold {fold+1}/{n_folds} | Epoch {epoch} | "
+                  f"train NLL {train_obj:.3f} | test NLL {test_obj:.3f} | "
+                  f"med MAE {med_mae:.3f} | elapsed {elapsed:.0f}s | "
+                  f"est. remaining {remaining:.0f}s")
+
+            writer.writerow([fold, med_mae, med_pears, med_spear,
+                             epoch, train_obj, test_obj.item()])
+            f.flush()
+
+            if test_obj < best_obj:
+                torch.save({'epoch': epoch,
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': opt.state_dict(),
+                            'loss': test_obj},
+                           os.path.join(output_dir, f"model_fold_{fold}"))
+                best_obj = test_obj
+                epochs_without_improvement = 0
+            else:
+                epochs_without_improvement += 1
+
+            if patience is not None and epochs_without_improvement >= patience:
+                print(f"Early stopping fold {fold} at epoch {epoch}.")
                 break
