@@ -15,7 +15,7 @@ import torch.nn as nn
 from params import Params
 from convCNP.models.elev_models import TmaxBiasConvCNPElev, GammaBiasConvCNPElev
 from convCNP.models.cnn import CNN, ResConvBlock
-from convCNP.training.loss_functions import gll, gamma_ll
+from convCNP.training.loss_functions import gll, gamma_ll, crps_gaussian
 from convCNP.training.utils import get_value_tmax
 from convCNP.models.smacnp import SMACNP_ALL
 
@@ -126,7 +126,7 @@ def build_smacnp(params: Params, input_dim: int) -> tuple[nn.Module, LossFn, Get
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Built SMACNP with {n_params:,} trainable parameters")
 
-    return model, gll, get_value_tmax
+    return model, crps_gaussian, get_value_tmax
 
 def load_model_checkpoint(checkpoint_path, p, device, input_dim=None):
     if p.MODEL_TYPE == 'smacnp':

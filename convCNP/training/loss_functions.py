@@ -111,3 +111,28 @@ def gamma_gp_ll(target_vals, v):
 
     return torch.mean(total)
 
+def crps_gaussian(target_vals, v):
+    """
+    Closed-form CRPS for a Gaussian predictive distribution.
+    Returns negative mean CRPS to match the gll convention (higher = better).
+    Training minimises -crps_gaussian, i.e. the mean CRPS.
+    """
+    import math
+    target_vals = target_vals.reshape(-1)
+    v = v.reshape(-1, 2)
+
+    # Drop NaN observations (same as gll)
+    mask = ~torch.isnan(target_vals)
+    v, target_vals = v[mask], target_vals[mask]
+
+    mu    = v[:, 0]
+    sigma = v[:, 1]
+    z     = (target_vals - mu) / sigma          # standardised anomaly
+
+    # Standard normal PDF and CDF
+    phi = torch.exp(-0.5 * z ** 2) / math.sqrt(2 * math.pi)
+    Phi = 0.5 * (1 + torch.erf(z / math.sqrt(2)))
+
+    crps = sigma * (z * (2 * Phi - 1) + 2 * phi - 1 / math.sqrt(math.pi))
+    return -crps.mean()   # negate to match gll convention
+
