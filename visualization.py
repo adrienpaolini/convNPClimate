@@ -6,6 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import torch
+import torch.nn as nn
 from matplotlib.ticker import FixedFormatter, FixedLocator, NullFormatter
 from scipy.ndimage import zoom
 
@@ -1074,3 +1076,113 @@ def plot_training_curves(
     figures.append(fig)
 
     return figures
+
+def plot_attention_maps(
+    model: nn.Module,
+    x_context: torch.Tensor,
+    y_context: torch.Tensor,
+    x_target_static: torch.Tensor,
+    day_idx: int,
+    target_point_idx: int,
+    context_lats: np.ndarray,
+    context_lons: np.ndarray,
+    target_lats: np.ndarray,
+    target_lons: np.ndarray,
+    device: torch.device,
+    save_path: str | Path | None = None,
+) -> plt.Figure:
+    """
+    Plot Laplace, mean-attribute, and variance attention weights for one target point.
+
+    Requires attention.py to store last_weights after each forward pass
+    (LaplaceAttention.last_weights and MultiHeadCrossAttentionWrapper.last_weights).
+
+    Args:
+        model:             Trained SMACNP model.
+        x_context:         (T, N, 6) context attributes.
+        y_context:         (T, N, 1) context observations.
+        x_target_static:   (M, 4) static target attributes [lat, lon, alt, mTPI].
+        day_idx:           Time index to visualize.
+        target_point_idx:  Row index into x_target_static (which target point to inspect).
+        context_lats:      (N,) latitude of each context point in degrees.
+        context_lons:      (N,) longitude of each context point in degrees.
+        target_lats:       (M,) latitude of all target points in degrees.
+        target_lons:       (M,) longitude of all target points in degrees.
+        device:            Torch device.
+        save_path:         Optional path to save the figure.
+
+    Returns:
+        The matplotlib Figure.
+    """
+    model.eval()
+
+    xc = x_context[day_idx:day_idx + 1].to(device)
+    yc = y_context[day_idx:day_idx + 1].to(device) 
+
+    # Build x_target for the single point: static features + seasonal from context
+    cos_doy = xc[0, 0, 4].item()
+    sin_doy = xc[0, 0, 5].item()
+    static_pt = x_target_static[target_point_idx:target_point_idx + 1].to(device)  
+    seasonal = torch.tensor([[cos_doy, sin_doy]], device=device)                   
+    xt = torch.cat([static_pt, seasonal], dim=-1).unsqueeze(0)                     
+
+    with torch.no_grad():
+        _ = model(xc, yc, xt)
+
+    # Retrieve stored attention weights
+    laplace_w = model.mean_loc_encoder.laplace_attention.last_weights[0, 0].cpu().numpy()
+    mean_w    = model.mean_attr_encoder.cross_attention.last_weights[0, 0].cpu().numpy()
+    var_w     = model.variance_encoder.cross_attention.last_weights[0, 0].cpu().numpy()
+
+    tgt_lat = target_lats[target_point_idx]
+    tgt_lon = target_lons[target_point_idx]
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+    titles  = ['Laplace (spatial) attention', 'Mean-attribute attention', 'Variance attention']
+    weights = [laplace_w, mean_w, var_w]
+
+    for ax, w, title in zip(axes, weights, titles):
+        sc = ax.scatter(context_lons, context_lats, c=w, cmap='YlOrRd',
+                        s=60, vmin=0, edgecolors='k', linewidths=0.3)
+        ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
+                   zorder=5, label='Target point')
+        plt.colorbar(sc, ax=ax, label='Attention weight')
+        ax.set_title(title)
+        ax.set_xlabel('Longitude')
+        ax.set_ylabel('Latitude')
+        ax.legend()
+
+    plt.suptitle(
+        f"Attention weights — day {day_idx}, "
+        f"target #{target_point_idx} ({tgt_lat:.3f}°N, {tgt_lon:.3f}°E)",
+        y=1.02,
+    )
+    plt.tight_layout()
+    _save_fig(fig, save_path)
+    plt.show()
+    return fig
+
+def find_target_point(
+    lat: float,
+    lon: float,
+    target_lats: np.ndarray,
+    target_lons: np.ndarray,
+) -> tuple[int, float, float, float]:
+    """
+    Find the target point index closest to a given (lat, lon) coordinate.
+
+    Args:
+        lat:         Desired latitude in degrees.
+        lon:         Desired longitude in degrees.
+        target_lats: (M,) array of target point latitudes.
+        target_lons: (M,) array of target point longitudes.
+
+    Returns:
+        Tuple of (index, matched_lat, matched_lon, distance_km).
+    """
+    dlat = target_lats - lat
+    dlon = (target_lons - lon) * np.cos(np.radians(lat))   # scale lon by cos(lat)
+    dist_deg = np.sqrt(dlat**2 + dlon**2)
+    idx = int(np.argmin(dist_deg))
+    dist_km = dist_deg[idx] * 111.0   # 1° ≈ 111 km
+    return idx, float(target_lats[idx]), float(target_lons[idx]), dist_km

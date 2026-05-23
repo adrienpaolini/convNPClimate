@@ -17,7 +17,11 @@ class MultiHeadCrossAttentionWrapper(nn.Module):
             key: (B, N, embed_dim) - keys from context
             value: (B, N, embed_dim) - values from context (can differ from key!)
         """
-        attn_output, _ = self.attention(query, key, value, need_weights=False)
+        attn_output, attn_weights = self.attention(
+            query, key, value,
+            need_weights=True, average_attn_weights=True
+        )
+        self.last_weights = attn_weights.detach()
         return attn_output
 
 
@@ -43,4 +47,5 @@ class LaplaceAttention(nn.Module):
         dists = torch.cdist(query, key, p=self.p_norm)
         temp = torch.exp(self.log_temp).clamp(min=self.min_temp, max=self.max_temp)
         weights = F.softmax(-dists / (temp + 1e-8), dim=-1)
+        self.last_weights = weights.detach()   # (B, M_target, N_context) — ADD THIS
         return torch.bmm(weights, value)
