@@ -1186,3 +1186,31 @@ def find_target_point(
     idx = int(np.argmin(dist_deg))
     dist_km = dist_deg[idx] * 111.0   # 1° ≈ 111 km
     return idx, float(target_lats[idx]), float(target_lons[idx]), dist_km
+
+def get_lat_lon_arrays(
+    x_context: torch.Tensor,
+    x_target_static: torch.Tensor,
+    metadata: ds.Era5Metadata,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Denormalize lat/lon coordinates back to degrees for context and target points.
+
+    Args:
+        x_context:        (T, N, 6) context attributes from build_smacnp_context.
+        x_target_static:  (M, 4) static target attributes from build_smacnp_targets.
+        metadata:         Era5Metadata with lat/lon bounds used for normalization.
+
+    Returns:
+        context_lats, context_lons, target_lats, target_lons — all (N,) or (M,) in degrees.
+    """
+    lat_range = metadata.lat_max - metadata.lat_min
+    lon_range = metadata.lon_max - metadata.lon_min
+
+    context_lats = x_context[0, :, 0].cpu().numpy() * lat_range + metadata.lat_min
+    context_lons = x_context[0, :, 1].cpu().numpy() * lon_range + metadata.lon_min
+
+    target_lats = x_target_static[:, 0].cpu().numpy() * lat_range + metadata.lat_min
+    target_lons = x_target_static[:, 1].cpu().numpy() * lon_range + metadata.lon_min
+
+    return context_lats, context_lons, target_lats, target_lons
+
