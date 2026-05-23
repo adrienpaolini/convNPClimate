@@ -297,8 +297,10 @@ def load_era5_data(
     if include_altitude:
         print("Adding altitude as input channel")
         # Normalize altitude to 0-1 range
-        altitude_min = float(altitude_tensor.min())
-        altitude_max = float(altitude_tensor.max())
+        #altitude_min = float(altitude_tensor.min())
+        #altitude_max = float(altitude_tensor.max())
+        altitude_min = 0
+        altitude_max = 4500
         altitude_range = altitude_max - altitude_min
         if altitude_range > 0:
             altitude_norm = (altitude_tensor - altitude_min) / altitude_range
@@ -955,8 +957,6 @@ def build_smacnp_targets(
     target_y_da: xr.DataArray,
     elev_tensor: torch.Tensor,
     seasonal_tensor: torch.Tensor,
-    alt_bounds: tuple[float, float] | None = None,    # (alt_min_m, alt_max_m)
-    mTPI_bounds: tuple[float, float] | None = None,   # (mTPI_min_m, mTPI_max_m)
     device: torch.device | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
