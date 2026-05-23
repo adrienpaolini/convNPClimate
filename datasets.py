@@ -891,6 +891,8 @@ def interpolate_era5_to_targets(
 
 def build_smacnp_context(
     era5_tensor: torch.Tensor,
+    altitude_m: torch.Tensor | None = None,   # raw input elevation in metres, (lat, lon)
+    alt_bounds: tuple[float, float] | None = None,   # (alt_min_m, alt_max_m)
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Reformat the ERA5 grid tensor into SMACNP point-format context arrays.
@@ -918,6 +920,14 @@ def build_smacnp_context(
     """
     T, C, n_lat, n_lon = era5_tensor.shape
     N = n_lat * n_lon
+
+    if altitude_m is not None and alt_bounds is not None:
+        alt_min_m, alt_max_m = alt_bounds
+        alt_flat = (altitude_m.reshape(N).to(era5_tensor.device) - alt_min_m) / (alt_max_m - alt_min_m + 1e-8)
+    else:
+        alt_flat = era5_tensor[0, 5, :, :].reshape(N)   # fallback: pre-normalized
+
+    mTPI_flat = torch.zeros(N, device=era5_tensor.device)   # ERA5 has no high-res TPI
 
     # --- y_context: temperature channel, flattened ---
     # era5_tensor[:, 0, :, :] → (T, lat, lon) → (T, N)
@@ -953,6 +963,9 @@ def build_smacnp_targets(
     target_y_da: xr.DataArray,
     elev_tensor: torch.Tensor,
     seasonal_tensor: torch.Tensor,
+    alt_bounds: tuple[float, float] | None = None,    # (alt_min_m, alt_max_m)
+    mTPI_bounds: tuple[float, float] | None = None,   # (mTPI_min_m, mTPI_max_m)
+    device=None,
     device: torch.device | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
@@ -996,11 +1009,23 @@ def build_smacnp_targets(
     true_elev = elev_tensor[:, 0].to(device)                # (M,) in metres
     mTPI      = elev_tensor[:, 2].to(device)                # (M,) in metres
 
-    alt_min, alt_max = true_elev.min(), true_elev.max()
-    alt_norm = (true_elev - alt_min) / (alt_max - alt_min + 1e-8)   # (M,)
+    if alt_bounds is not None:
+        alt_min_m, alt_max_m = alt_bounds
+        alt_norm = (true_elev - alt_min_m) / (alt_max_m - alt_min_m + 1e-8)
+    else:
+        alt_norm = (true_elev - true_elev.min()) / (true_elev.max() - true_elev.min() + 1e-8)
 
-    mTPI_min, mTPI_max = mTPI.min(), mTPI.max()
-    mTPI_norm = (mTPI - mTPI_min) / (mTPI_max - mTPI_min + 1e-8)    # (M,)
+    if mTPI_bounds is not None:
+        mTPI_min_m, mTPI_max_m = mTPI_bounds
+        mTPI_norm = (mTPI - mTPI_min_m) / (mTPI_max_m - mTPI_min_m + 1e-8)
+    else:
+        mTPI_norm = (mTPI - mTPI.min()) / (mTPI.max() - mTPI.min() + 1e-8)
+
+    #alt_min, alt_max = true_elev.min(), true_elev.max()
+    #alt_norm = (true_elev - alt_min) / (alt_max - alt_min + 1e-8)   # (M,)
+
+    #mTPI_min, mTPI_max = mTPI.min(), mTPI.max()
+    #mTPI_norm = (mTPI - mTPI_min) / (mTPI_max - mTPI_min + 1e-8)    # (M,)
 
     # --- Static attributes: (T, M, 4) ---
     static_attrs = torch.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], dim=1)  # (M, 4)
