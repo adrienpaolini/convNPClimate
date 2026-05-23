@@ -65,39 +65,6 @@ class Era5Metadata:
         return (normalized_data * self.data_std) + self.data_mean
 
 
-class SmacnpNormBounds:
-    """Shared normalization bounds for SMACNP context and target features."""
-    alt_min_m: float
-    alt_max_m: float
-    mTPI_min_m: float
-    mTPI_max_m: float
-
-
-def compute_smacnp_norm_bounds(
-    era5_altitude_m,        # xarray DataArray or numpy array — raw ERA5 elevation in metres
-    target_topo: torch.Tensor,   # (M_full, 3) — FULL unsubsampled target_topo
-) -> tuple[tuple[float, float], tuple[float, float]]:
-    """
-    Compute shared (alt_bounds, mTPI_bounds) for build_smacnp_context / build_smacnp_targets.
-
-    Must be called before any subsampling so bounds cover the full data range.
-
-    Returns:
-        alt_bounds:  (alt_min_m,  alt_max_m)  — joint ERA5 + MeteoSwiss range
-        mTPI_bounds: (mTPI_min_m, mTPI_max_m) — MeteoSwiss range
-    """
-    era5_alt = era5_altitude_m.values if hasattr(era5_altitude_m, 'values') else np.array(era5_altitude_m)
-    ms_alt   = target_topo[:, 0].cpu().numpy()
-    ms_mTPI  = target_topo[:, 2].cpu().numpy()
-
-    alt_bounds  = (float(min(era5_alt.min(), ms_alt.min())),
-                   float(max(era5_alt.max(), ms_alt.max())))
-    mTPI_bounds = (float(ms_mTPI.min()), float(ms_mTPI.max()))
-
-    print(f"Shared alt  bounds: [{alt_bounds[0]:.0f}, {alt_bounds[1]:.0f}] m")
-    print(f"Shared mTPI bounds: [{mTPI_bounds[0]:.0f}, {mTPI_bounds[1]:.0f}] m")
-    return alt_bounds, mTPI_bounds
-
 
 # Fields containing numpy arrays that need special JSON handling
 ERA5_METADATA_NUMPY_FIELDS = ['lat_coords', 'lon_coords']
@@ -925,9 +892,7 @@ def interpolate_era5_to_targets(
 
 def build_smacnp_context(
     era5_tensor: torch.Tensor,
-    altitude_m: torch.Tensor | None = None,       # raw ERA5 elevation in metres, shape (lat, lon)
-    norm_bounds: SmacnpNormBounds | None = None,  # shared normalization bounds
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor]:
 
     """
     Reformat the ERA5 grid tensor into SMACNP point-format context arrays.
@@ -956,14 +921,6 @@ def build_smacnp_context(
     T, C, n_lat, n_lon = era5_tensor.shape
     N = n_lat * n_lon
 
-    if altitude_m is not None and alt_bounds is not None:
-        alt_min_m, alt_max_m = alt_bounds
-        alt_flat = (altitude_m.reshape(N).to(era5_tensor.device) - alt_min_m) / (alt_max_m - alt_min_m + 1e-8)
-    else:
-        alt_flat = era5_tensor[0, 5, :, :].reshape(N)   # fallback: pre-normalized
-
-    mTPI_flat = torch.zeros(N, device=era5_tensor.device)   # ERA5 has no high-res TPI
-
     # --- y_context: temperature channel, flattened ---
     # era5_tensor[:, 0, :, :] → (T, lat, lon) → (T, N)
     y_context = era5_tensor[:, 0, :, :].reshape(T, N, 1)   # (T, N, 1)
@@ -972,6 +929,8 @@ def build_smacnp_context(
     # Take first time step (lat/lon/alt don't change over time)
     lat_flat = era5_tensor[0, 1, :, :].reshape(N)           # (N,)
     lon_flat = era5_tensor[0, 2, :, :].reshape(N)           # (N,)
+    alt_flat = era5_tensor[0, 5, :, :].reshape(N)           # (N,) already in [0,1]
+    mTPI_flat = torch.zeros(N, device=era5_tensor.device)   # (N,) — zero for coarse grid
 
     # Stack static attrs: (N, 4) = [lat, lon, alt, mTPI]
     static_attrs = torch.stack([lat_flat, lon_flat, alt_flat, mTPI_flat], dim=1)
@@ -1041,23 +1000,12 @@ def build_smacnp_targets(
     true_elev = elev_tensor[:, 0].to(device)                # (M,) in metres
     mTPI      = elev_tensor[:, 2].to(device)                # (M,) in metres
 
-    if alt_bounds is not None:
-        alt_min_m, alt_max_m = alt_bounds
-        alt_norm = (true_elev - alt_min_m) / (alt_max_m - alt_min_m + 1e-8)
-    else:
-        alt_norm = (true_elev - true_elev.min()) / (true_elev.max() - true_elev.min() + 1e-8)
-
-    if mTPI_bounds is not None:
-        mTPI_min_m, mTPI_max_m = mTPI_bounds
-        mTPI_norm = (mTPI - mTPI_min_m) / (mTPI_max_m - mTPI_min_m + 1e-8)
-    else:
-        mTPI_norm = (mTPI - mTPI.min()) / (mTPI.max() - mTPI.min() + 1e-8)
-
     #alt_min, alt_max = true_elev.min(), true_elev.max()
-    #alt_norm = (true_elev - alt_min) / (alt_max - alt_min + 1e-8)
+    alt_min, alt_max = 0.0, 4500.0
+    alt_norm = (true_elev - alt_min) / (alt_max - alt_min + 1e-8)
 
-    #mTPI_min, mTPI_max = mTPI.min(), mTPI.max()
-    #mTPI_norm = (mTPI - mTPI_min) / (mTPI_max - mTPI_min + 1e-8)
+    mTPI_min, mTPI_max = mTPI.min(), mTPI.max()
+    mTPI_norm = (mTPI - mTPI_min) / (mTPI_max - mTPI_min + 1e-8)
 
     # --- Static attributes: (T, M, 4) ---
     static_attrs = torch.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], dim=1)  # (M, 4)
