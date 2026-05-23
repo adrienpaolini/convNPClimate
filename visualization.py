@@ -1159,7 +1159,6 @@ def plot_attention_maps(
     )
     plt.tight_layout()
     _save_fig(fig, save_path)
-    plt.show()
     return fig
 
 def find_target_point(
