@@ -10,6 +10,8 @@ import torch
 import torch.nn as nn
 from matplotlib.ticker import FixedFormatter, FixedLocator, NullFormatter
 from scipy.ndimage import zoom
+from scipy.interpolate import RegularGridInterpolator
+
 
 import datasets as ds
 
@@ -1156,28 +1158,40 @@ def plot_attention_maps(
     # ERA5 grid shape from unique lat/lon values
     context_lats = x_context[0, :, 0].cpu().numpy() * lat_range + metadata.lat_min
     context_lons = x_context[0, :, 1].cpu().numpy() * lon_range + metadata.lon_min
-    n_era5_lats = len(np.unique(np.round(context_lats, 6)))
-    n_era5_lons = len(np.unique(np.round(context_lons, 6)))
+    # ERA5 unique coordinates (ascending = south-to-north, west-to-east)
+    era5_lats_unique = np.sort(np.unique(np.round(context_lats, 6)))
+    era5_lons_unique = np.sort(np.unique(np.round(context_lons, 6)))
+    n_era5_lats = len(era5_lats_unique)
+    n_era5_lons = len(era5_lons_unique)
 
-    # Upsample + mask helpers
     N, E = grid_shape
-    zoom_factors = (N / n_era5_lats, E / n_era5_lons)
-    swiss_mask = ~np.isnan(y_target_flat.reshape(N, E)) if y_target_flat is not None else np.ones((N, E), dtype=bool)
-    extent = [metadata.lon_min, metadata.lon_max, metadata.lat_min, metadata.lat_max]
-    center_lat = (metadata.lat_min + metadata.lat_max) / 2
+    swiss_mask = ~np.isnan(y_target_flat.reshape(N, E)) if y_target_flat is not None \
+                 else np.ones((N, E), dtype=bool)
+
+    # MeteoSwiss geographic extent (Switzerland domain, not ERA5 domain)
+    mch_extent = [target_lons.min(), target_lons.max(),
+                  target_lats.min(), target_lats.max()]
+
+    center_lat = (target_lats.min() + target_lats.max()) / 2
     geo_aspect = 1.0 / np.cos(np.radians(center_lat))
 
     def _prepare(w):
-        w_2d = w.reshape(n_era5_lats, n_era5_lons)
-        w_up = zoom(w_2d, zoom_factors, order=1)
-        w_up = np.flipud(w_up)
-        return np.where(swiss_mask, w_up, np.nan)
+        # Reshape ERA5 weights to 2D and flip to south-first for the interpolator
+        w_era5 = np.flipud(w.reshape(n_era5_lats, n_era5_lons))
+        interp = RegularGridInterpolator(
+            (era5_lats_unique, era5_lons_unique), w_era5,
+            method='linear', bounds_error=False, fill_value=0.0
+        )
+        # Query at each MeteoSwiss grid point's true lat/lon
+        w_mch = interp(np.column_stack([target_lats, target_lons])).reshape(N, E)
+        return np.where(swiss_mask, w_mch, np.nan)
+
 
     def _plot_row(axes_row, weights, row_label):
         titles = ['Laplace (spatial)', 'Mean-attribute', 'Variance']
         for ax, w, title in zip(axes_row, weights, titles):
             im = ax.imshow(_prepare(w), cmap='YlOrRd', origin='lower', vmin=0,
-                           extent=extent, aspect=geo_aspect)
+                           extent=mch_extent, aspect=geo_aspect)
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
                        zorder=5, label='Target point')
             plt.colorbar(im, ax=ax, label='Attention weight')
