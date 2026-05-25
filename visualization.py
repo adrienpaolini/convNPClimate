@@ -1088,96 +1088,115 @@ def plot_attention_maps(
     metadata: ds.Era5Metadata,
     device: torch.device,
     y_target_flat: np.ndarray | None = None,
+    show_average: bool = True,
     save_path: str | Path | None = None,
 ) -> plt.Figure:
     """
     Plot Laplace, mean-attribute, and variance attention weights for one target point.
+    First row: single day (day_idx). Second row: weights averaged over all days.
 
     Args:
         model:             Trained SMACNP model.
         x_context:         (T, N, 6) context attributes.
         y_context:         (T, N, 1) context observations.
         x_target_static:   (M, 4) static target attributes [lat, lon, alt, mTPI].
-        day_idx:           Time index to visualize.
+        day_idx:           Time index to visualize in the first row.
         target_point_idx:  Row index into x_target_static (which target point to inspect).
         grid_shape:        (N, E) shape of the MeteoSwiss target grid.
         metadata:          Era5Metadata with lat/lon bounds and denormalize method.
         device:            Torch device.
         y_target_flat:     Optional (N*E,) ground-truth array to derive the Switzerland mask.
-                           If None, the full rectangular bounding box is shown.
+        show_average:      If True, add a second row with weights averaged over all days.
         save_path:         Optional path to save the figure.
     """
     model.eval()
 
-    xc = x_context[day_idx:day_idx + 1].to(device)
-    yc = y_context[day_idx:day_idx + 1].to(device)
-
-    cos_doy = xc[0, 0, 4].item()
-    sin_doy = xc[0, 0, 5].item()
-    static_pt = x_target_static[target_point_idx:target_point_idx + 1].to(device)
-    seasonal = torch.tensor([[cos_doy, sin_doy]], device=device)
-    xt = torch.cat([static_pt, seasonal], dim=-1).unsqueeze(0)
-
-    with torch.no_grad():
-        _ = model(xc, yc, xt)
-
-    laplace_w = model.mean_loc_encoder.laplace_attention.last_weights[0, 0].cpu().numpy()
-    mean_w    = model.mean_attr_encoder.cross_attention.last_weights[0, 0].cpu().numpy()
-    var_w     = model.variance_encoder.cross_attention.last_weights[0, 0].cpu().numpy()
-
     # Denormalize coordinates
     lat_range = metadata.lat_max - metadata.lat_min
     lon_range = metadata.lon_max - metadata.lon_min
-    context_lats = xc[0, :, 0].cpu().numpy() * lat_range + metadata.lat_min
-    context_lons = xc[0, :, 1].cpu().numpy() * lon_range + metadata.lon_min
     target_lats = x_target_static[:, 0].cpu().numpy() * lat_range + metadata.lat_min
     target_lons = x_target_static[:, 1].cpu().numpy() * lon_range + metadata.lon_min
-
     tgt_lat = target_lats[target_point_idx]
     tgt_lon = target_lons[target_point_idx]
 
-    # Infer ERA5 grid shape from unique lat/lon values
+    static_pt = x_target_static[target_point_idx:target_point_idx + 1].to(device)
+
+    def _forward_day(d):
+        xc = x_context[d:d + 1].to(device)
+        yc = y_context[d:d + 1].to(device)
+        cos_doy = xc[0, 0, 4].item()
+        sin_doy = xc[0, 0, 5].item()
+        seasonal = torch.tensor([[cos_doy, sin_doy]], device=device)
+        xt = torch.cat([static_pt, seasonal], dim=-1).unsqueeze(0)
+        with torch.no_grad():
+            _ = model(xc, yc, xt)
+        lw = model.mean_loc_encoder.laplace_attention.last_weights[0, 0].cpu().numpy()
+        mw = model.mean_attr_encoder.cross_attention.last_weights[0, 0].cpu().numpy()
+        vw = model.variance_encoder.cross_attention.last_weights[0, 0].cpu().numpy()
+        return lw, mw, vw
+
+    # Single day
+    laplace_w, mean_w, var_w = _forward_day(day_idx)
+
+    # Average over all days
+    if show_average:
+        T = x_context.shape[0]
+        laplace_sum = np.zeros_like(laplace_w)
+        mean_sum    = np.zeros_like(mean_w)
+        var_sum     = np.zeros_like(var_w)
+        for d in range(T):
+            lw, mw, vw = _forward_day(d)
+            laplace_sum += lw
+            mean_sum    += mw
+            var_sum     += vw
+        laplace_avg = laplace_sum / T
+        mean_avg    = mean_sum    / T
+        var_avg     = var_sum     / T
+
+    # ERA5 grid shape from unique lat/lon values
+    context_lats = x_context[0, :, 0].cpu().numpy() * lat_range + metadata.lat_min
+    context_lons = x_context[0, :, 1].cpu().numpy() * lon_range + metadata.lon_min
     n_era5_lats = len(np.unique(np.round(context_lats, 6)))
     n_era5_lons = len(np.unique(np.round(context_lons, 6)))
 
-    # Upsample ERA5 attention weights to MeteoSwiss grid resolution
+    # Upsample + mask helpers
     N, E = grid_shape
     zoom_factors = (N / n_era5_lats, E / n_era5_lons)
-
-    # Switzerland mask: NaN outside valid pixels
-    if y_target_flat is not None:
-        swiss_mask = ~np.isnan(y_target_flat.reshape(N, E))
-    else:
-        swiss_mask = np.ones((N, E), dtype=bool)
-
+    swiss_mask = ~np.isnan(y_target_flat.reshape(N, E)) if y_target_flat is not None else np.ones((N, E), dtype=bool)
     extent = [metadata.lon_min, metadata.lon_max, metadata.lat_min, metadata.lat_max]
-
     center_lat = (metadata.lat_min + metadata.lat_max) / 2
     geo_aspect = 1.0 / np.cos(np.radians(center_lat))
 
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-    titles  = ['Laplace (spatial) attention', 'Mean-attribute attention', 'Variance attention']
-    weights = [laplace_w, mean_w, var_w]
-
-    for ax, w, title in zip(axes, weights, titles):
+    def _prepare(w):
         w_2d = w.reshape(n_era5_lats, n_era5_lons)
-        w_up = zoom(w_2d, zoom_factors, order=1)   # bilinear → smooth surface
-        w_up = np.flipud(w_up)                      # ERA5 north→south to south→north
-        w_up = np.where(swiss_mask, w_up, np.nan)
+        w_up = zoom(w_2d, zoom_factors, order=1)
+        w_up = np.flipud(w_up)
+        return np.where(swiss_mask, w_up, np.nan)
 
-        im = ax.imshow(w_up, cmap='YlOrRd', origin='lower', vmin=0,
-                       extent=extent, aspect=geo_aspect)
-        ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
-                   zorder=5, label='Target point')
-        plt.colorbar(im, ax=ax, label='Attention weight')
-        ax.set_title(title)
-        ax.set_xlabel('Longitude')
-        ax.set_ylabel('Latitude')
-        ax.legend()
+    def _plot_row(axes_row, weights, row_label):
+        titles = ['Laplace (spatial)', 'Mean-attribute', 'Variance']
+        for ax, w, title in zip(axes_row, weights, titles):
+            im = ax.imshow(_prepare(w), cmap='YlOrRd', origin='lower', vmin=0,
+                           extent=extent, aspect=geo_aspect)
+            ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
+                       zorder=5, label='Target point')
+            plt.colorbar(im, ax=ax, label='Attention weight')
+            ax.set_title(f'{title}\n{row_label}')
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+            ax.legend()
+
+    n_rows = 2 if show_average else 1
+    fig, axes = plt.subplots(n_rows, 3, figsize=(18, 5 * n_rows))
+    if n_rows == 1:
+        axes = axes[np.newaxis, :]   # make indexing uniform
+
+    _plot_row(axes[0], [laplace_w, mean_w, var_w], f'Day {day_idx}')
+    if show_average:
+        _plot_row(axes[1], [laplace_avg, mean_avg, var_avg], f'Average over {T} days')
 
     plt.suptitle(
-        f"Attention weights — day {day_idx}, "
-        f"target #{target_point_idx} ({tgt_lat:.3f}°N, {tgt_lon:.3f}°E)",
+        f"Attention weights — target #{target_point_idx} ({tgt_lat:.3f}°N, {tgt_lon:.3f}°E)",
         y=1.02,
     )
     plt.tight_layout()
