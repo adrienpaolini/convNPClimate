@@ -37,7 +37,7 @@ class Params:
     N_EPOCHS: int = 30       # default in paper is 100
     BATCH_SIZE: int = 16     # default in paper is 16
     LR: float = 5e-4         # default in paper is 5e-4
-    PATIENCE: int = 10       # default in paper is 10
+    PATIENCE: int = 20       # default in paper is 10
 
     # Cross-validation parameters
     N_FOLDS: int = 5         # default in paper is 5
