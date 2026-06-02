@@ -1091,6 +1091,7 @@ def plot_attention_maps(
     device: torch.device,
     y_target_flat: np.ndarray | None = None,
     show_average: bool = True,
+    show_similarity: bool = True,
     save_path: str | Path | None = None,
 ) -> plt.Figure:
     """
@@ -1175,6 +1176,24 @@ def plot_attention_maps(
     center_lat = (target_lats.min() + target_lats.max()) / 2
     geo_aspect = 1.0 / np.cos(np.radians(center_lat))
 
+    # Attribute similarity maps (MeteoSwiss grid, no interpolation needed)
+    all_alt  = x_target_static[:, 2].cpu().numpy()   # (M,) alt_norm
+    all_mTPI = x_target_static[:, 3].cpu().numpy()   # (M,) mTPI_norm
+    tgt_alt  = all_alt[target_point_idx]
+    tgt_mTPI = all_mTPI[target_point_idx]
+
+    alt_dist  = np.abs(all_alt  - tgt_alt)
+    mTPI_dist = np.abs(all_mTPI - tgt_mTPI)
+    comb_dist = np.sqrt(alt_dist**2 + mTPI_dist**2)
+
+    alt_sim  = 1 - alt_dist  / (alt_dist.max()  + 1e-8)
+    mTPI_sim = 1 - mTPI_dist / (mTPI_dist.max() + 1e-8)
+    comb_sim = 1 - comb_dist / (comb_dist.max() + 1e-8)
+
+    def _to_sim_grid(arr):
+        return np.where(swiss_mask, arr.reshape(N, E), np.nan)
+
+
     def _prepare(w):
         # Reshape ERA5 weights to 2D and flip to south-first for the interpolator
         w_era5 = np.flipud(w.reshape(n_era5_lats, n_era5_lons))
@@ -1200,14 +1219,35 @@ def plot_attention_maps(
             ax.set_ylabel('Latitude')
             ax.legend()
 
-    n_rows = 2 if show_average else 1
+    def _plot_similarity_row(axes_row):
+        panels = [
+            (_to_sim_grid(alt_sim),  'Altitude similarity'),
+            (_to_sim_grid(mTPI_sim), 'mTPI similarity'),
+            (_to_sim_grid(comb_sim), 'Combined attribute similarity\n(altitude + mTPI)'),
+        ]
+        for ax, (grid, title) in zip(axes_row, panels):
+            im = ax.imshow(grid, cmap='RdYlGn', origin='lower', vmin=0, vmax=1,
+                        extent=mch_extent, aspect=geo_aspect)
+            ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
+                    zorder=5, label='Target point')
+            plt.colorbar(im, ax=ax, label='Similarity (1 = identical)')
+            ax.set_title(title)
+            ax.set_xlabel('Longitude')
+            ax.set_ylabel('Latitude')
+            ax.legend()
+
+
+    n_rows = (2 if show_average else 1) + (1 if show_similarity else 0)
     fig, axes = plt.subplots(n_rows, 3, figsize=(18, 5 * n_rows))
     if n_rows == 1:
-        axes = axes[np.newaxis, :]   # make indexing uniform
+        axes = axes[np.newaxis, :]
 
     _plot_row(axes[0], [laplace_w, mean_w, var_w], f'Day {day_idx}')
     if show_average:
         _plot_row(axes[1], [laplace_avg, mean_avg, var_avg], f'Average over {T} days')
+    if show_similarity:
+        _plot_similarity_row(axes[-1])
+
 
     plt.suptitle(
         f"Attention weights — target #{target_point_idx} ({tgt_lat:.3f}°N, {tgt_lon:.3f}°E)",
