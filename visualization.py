@@ -1093,6 +1093,8 @@ def plot_attention_maps(
     show_average: bool = True,
     show_similarity: bool = True,
     save_path: str | Path | None = None,
+    viz_grid_lats_1d: np.ndarray | None = None,
+    viz_grid_lons_1d: np.ndarray | None = None,
 ) -> plt.Figure:
     """
     Plot Laplace, mean-attribute, and variance attention weights for one target point.
@@ -1165,16 +1167,24 @@ def plot_attention_maps(
     n_era5_lats = len(era5_lats_unique)
     n_era5_lons = len(era5_lons_unique)
 
-    N, E = grid_shape
-    swiss_mask = ~np.isnan(y_target_flat.reshape(N, E)) if y_target_flat is not None \
-                 else np.ones((N, E), dtype=bool)
+    if viz_grid_lats_1d is not None and viz_grid_lons_1d is not None:
+        N, E = len(viz_grid_lats_1d), len(viz_grid_lons_1d)
+        _vlo, _vla = np.meshgrid(viz_grid_lons_1d, viz_grid_lats_1d)
+        _viz_lats_flat = _vla.ravel()
+        _viz_lons_flat = _vlo.ravel()
+        swiss_mask = np.ones((N, E), dtype=bool)
+    else:
+        N, E = grid_shape
+        _viz_lats_flat = target_lats
+        _viz_lons_flat = target_lons
+        swiss_mask = ~np.isnan(y_target_flat.reshape(N, E)) if y_target_flat is not None \
+                    else np.ones((N, E), dtype=bool)
 
-    # MeteoSwiss geographic extent (Switzerland domain, not ERA5 domain)
-    mch_extent = [target_lons.min(), target_lons.max(),
-                  target_lats.min(), target_lats.max()]
+    mch_extent = [_viz_lons_flat.min(), _viz_lons_flat.max(),
+                _viz_lats_flat.min(), _viz_lats_flat.max()]
+    center_lat  = (_viz_lats_flat.min() + _viz_lats_flat.max()) / 2
+    geo_aspect  = 1.0 / np.cos(np.radians(center_lat))
 
-    center_lat = (target_lats.min() + target_lats.max()) / 2
-    geo_aspect = 1.0 / np.cos(np.radians(center_lat))
 
     # Attribute similarity maps (MeteoSwiss grid, no interpolation needed)
     all_alt  = x_target_static[:, 2].cpu().numpy()   # (M,) alt_norm
@@ -1191,19 +1201,29 @@ def plot_attention_maps(
     comb_sim = 1 - comb_dist / (comb_dist.max() + 1e-8)
 
     def _to_sim_grid(arr):
+        if viz_grid_lats_1d is not None:
+            from scipy.interpolate import griddata
+            vals = griddata(
+                np.column_stack([target_lats, target_lons]),
+                arr,
+                np.column_stack([_viz_lats_flat, _viz_lons_flat]),
+                method='linear',
+                fill_value=np.nan,
+            )
+            return vals.reshape(N, E)
         return np.where(swiss_mask, arr.reshape(N, E), np.nan)
 
 
+
+    
     def _prepare(w):
-        # Reshape ERA5 weights to 2D and flip to south-first for the interpolator
         w_era5 = np.flipud(w.reshape(n_era5_lats, n_era5_lons))
         interp = RegularGridInterpolator(
             (era5_lats_unique, era5_lons_unique), w_era5,
             method='linear', bounds_error=False, fill_value=0.0
         )
-        # Query at each MeteoSwiss grid point's true lat/lon
-        w_mch = interp(np.column_stack([target_lats, target_lons])).reshape(N, E)
-        return np.where(swiss_mask, w_mch, np.nan)
+        w_viz = interp(np.column_stack([_viz_lats_flat, _viz_lons_flat])).reshape(N, E)
+        return np.where(swiss_mask, w_viz, np.nan)
 
 
     def _plot_row(axes_row, weights, row_label):

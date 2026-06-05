@@ -1095,3 +1095,39 @@ def load_peakweather_stations(
           f"{stations_meta['station_height'].max():.0f}] m")
 
     return daily_tmax_pw, stations_meta, valid_stations
+
+
+def prepare_peakweather_targets(
+    stations_meta: pd.DataFrame,
+    hi_res_tpi: xr.DataArray,
+    metadata: 'Era5Metadata',
+    device: torch.device | None = None,
+) -> torch.Tensor:
+    if device is None:
+        device = torch.device('cpu')
+
+    lats = stations_meta['latitude'].values.astype(np.float32)
+    lons = stations_meta['longitude'].values.astype(np.float32)
+    alts = stations_meta['station_height'].values.astype(np.float32)
+    easting  = stations_meta['swiss_easting'].values
+    northing = stations_meta['swiss_northing'].values
+
+    lat_norm = (lats - metadata.lat_min) / (metadata.lat_max - metadata.lat_min)
+    lon_norm = (lons - metadata.lon_min) / (metadata.lon_max - metadata.lon_min)
+    alt_norm = alts / 4500.0
+
+    tpi_vals = hi_res_tpi.interp(
+        x=xr.DataArray(easting,  dims='point'),
+        y=xr.DataArray(northing, dims='point'),
+        method='nearest',
+    ).values.astype(np.float32)
+    tpi_vals = np.nan_to_num(tpi_vals, nan=0.0)
+    mTPI_norm = (tpi_vals - (-200.0)) / 400.0
+
+    x_pw_static = torch.tensor(
+        np.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], axis=1),
+        dtype=torch.float32,
+        device=device,
+    )
+    return x_pw_static
+
