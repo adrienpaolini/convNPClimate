@@ -1025,3 +1025,73 @@ def build_smacnp_targets(
     ).to(device)                                             # (T, M)
 
     return x_target, y_target
+
+
+
+def load_peakweather_stations(
+    first_date: str,
+    last_date: str,
+    validity_threshold: float = 0.9,
+    station_type: str = 'meteo_station',
+) -> Tuple[pd.DataFrame, pd.DataFrame, list]:
+    """
+    Load PeakWeather station data and return daily tmax observations.
+
+    Parameters
+    ----------
+    first_date          : ISO date string, start of requested period
+    last_date           : ISO date string, end of requested period
+    validity_threshold  : minimum fraction of non-NaN days to keep a station
+    station_type        : 'meteo_station' (default), 'rain_gauge', or None
+
+    Returns
+    -------
+    daily_tmax_pw : pd.DataFrame (days, n_valid_stations)
+        Daily maximum temperature in °C; NaN where data is missing.
+        Index is timezone-naive to align with ERA5 dates.
+    stations_meta : pd.DataFrame
+        Rows from pw_ds.stations_table for valid stations.
+    valid_stations : list[str]
+        Station codes retained after filtering.
+    """
+    try:
+        from peakweather import PeakWeatherDataset
+    except ImportError:
+        raise ImportError(
+            "peakweather is not installed. Run: pip install peakweather"
+        )
+
+    print(f"Loading PeakWeather stations ({station_type}) "
+          f"from {first_date} to {last_date} ...")
+
+    pw_ds = PeakWeatherDataset(
+        station_type=station_type,
+        imputation_method=None,
+        freq='D',
+        aggregation_methods={'temperature': 'max'},
+    )
+
+    df = pw_ds.get_observations(
+        parameters=['temperature'],
+        first_date=first_date,
+        last_date=last_date,
+    )
+
+    daily_tmax_pw = df.xs('temperature', axis=1, level=1)
+    daily_tmax_pw.index = daily_tmax_pw.index.tz_localize(None)
+
+    valid_rate = daily_tmax_pw.notna().mean()
+    valid_stations = valid_rate[valid_rate >= validity_threshold].index.tolist()
+    daily_tmax_pw = daily_tmax_pw[valid_stations]
+
+    stations_meta = pw_ds.stations_table.loc[valid_stations]
+
+    print(f"  {len(valid_stations)} / {len(valid_rate)} stations "
+          f"pass validity threshold ({validity_threshold:.0%})")
+    print(f"  Daily tmax shape: {daily_tmax_pw.shape}  "
+          f"({daily_tmax_pw.index[0].date()} → {daily_tmax_pw.index[-1].date()})")
+    print(f"  Altitude range: "
+          f"[{stations_meta['station_height'].min():.0f}, "
+          f"{stations_meta['station_height'].max():.0f}] m")
+
+    return daily_tmax_pw, stations_meta, valid_stations
