@@ -1195,7 +1195,7 @@ def build_pw_station_tensors(
     M = len(station_ids)
 
     # Expand static to (T, M, 4) and add seasonal (T, M, 2)
-    static_exp = static_t.unsqueeze(0).expand(T, -1, -1)  # (T, M, 4)
+    static_exp = static_t.unsqueeze(0).expand(T, -1, -1).to(device)  # (T, M, 4)
     if seasonal_features is not None:
         seas_exp = seasonal_features.unsqueeze(1).expand(-1, M, -1)  # (T, M, 2)
         x = torch.cat([static_exp, seas_exp], dim=-1).to(device)     # (T, M, 6)
@@ -1213,23 +1213,25 @@ def build_pw_station_tensors(
 def compute_pw_metadata(
     daily_tmax: pd.DataFrame,
     train_stations: list,
-    era5_metadata: 'Era5Metadata',
-) -> 'Era5Metadata':
-    """
-    Returns a metadata object with data_mean/data_std from PW train stations.
-    Reuses lat/lon bounds from ERA5 metadata (same Switzerland domain).
-    """
+) -> Era5Metadata:
     train_vals = daily_tmax[train_stations].values.ravel()
     train_vals = train_vals[~np.isnan(train_vals)]
-    # Convert °C to Kelvin to match ERA5 convention
     train_k = train_vals + KELVIN_OFFSET
     pw_mean = float(np.mean(train_k))
     pw_std  = float(np.std(train_k))
     print(f"PW train stats: mean={pw_mean:.2f} K, std={pw_std:.2f} K")
-    # Shallow-copy metadata with updated stats
-    import copy
-    pw_meta = copy.copy(era5_metadata)
-    pw_meta.data_mean = pw_mean
-    pw_meta.data_std  = pw_std
-    return pw_meta
+
+    lat_min, lat_max = 45.4, 48.2
+    lon_min, lon_max =  5.0, 11.0
+
+    return Era5Metadata(
+        data_mean=pw_mean,
+        data_std=pw_std,
+        lat_min=lat_min,
+        lat_max=lat_max,
+        lon_min=lon_min,
+        lon_max=lon_max,
+        lat_coords=np.linspace(lat_min, lat_max, 29),
+        lon_coords=np.linspace(lon_min, lon_max, 61),
+    )
 

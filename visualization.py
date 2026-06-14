@@ -1166,6 +1166,7 @@ def plot_attention_maps(
     era5_lons_unique = np.sort(np.unique(np.round(context_lons, 6)))
     n_era5_lats = len(era5_lats_unique)
     n_era5_lons = len(era5_lons_unique)
+    context_is_regular = (n_era5_lats * n_era5_lons == x_context.shape[1])  # add this
 
     if viz_grid_lats_1d is not None and viz_grid_lons_1d is not None:
         N, E = len(viz_grid_lats_1d), len(viz_grid_lons_1d)
@@ -1217,13 +1218,24 @@ def plot_attention_maps(
 
     
     def _prepare(w):
-        w_era5 = np.flipud(w.reshape(n_era5_lats, n_era5_lons))
-        interp = RegularGridInterpolator(
-            (era5_lats_unique, era5_lons_unique), w_era5,
-            method='linear', bounds_error=False, fill_value=0.0
-        )
-        w_viz = interp(np.column_stack([_viz_lats_flat, _viz_lons_flat])).reshape(N, E)
+        if context_is_regular:
+            w_era5 = np.flipud(w.reshape(n_era5_lats, n_era5_lons))
+            interp = RegularGridInterpolator(
+                (era5_lats_unique, era5_lons_unique), w_era5,
+                method='linear', bounds_error=False, fill_value=0.0
+            )
+            w_viz = interp(np.column_stack([_viz_lats_flat, _viz_lons_flat])).reshape(N, E)
+        else:
+            from scipy.interpolate import griddata
+            w_viz = griddata(
+                np.column_stack([context_lats, context_lons]),
+                w,
+                np.column_stack([_viz_lats_flat, _viz_lons_flat]),
+                method='linear',
+                fill_value=0.0,
+            ).reshape(N, E)
         return np.where(swiss_mask, w_viz, np.nan)
+
 
 
     def _plot_row(axes_row, weights, row_label):
