@@ -1131,3 +1131,105 @@ def prepare_peakweather_targets(
     )
     return x_pw_static
 
+
+
+def split_peakweather_stations(
+    valid_stations: list,
+    train_frac: float = 0.6,
+    val_frac: float = 0.2,
+    seed: int = 42,
+) -> tuple[list, list, list]:
+    n = len(valid_stations)
+    rng = np.random.RandomState(seed)
+    idx = rng.permutation(n)
+    n_train = int(n * train_frac)
+    n_val   = int(n * val_frac)
+    train_stations = [valid_stations[i] for i in sorted(idx[:n_train])]
+    val_stations   = [valid_stations[i] for i in sorted(idx[n_train:n_train+n_val])]
+    test_stations  = [valid_stations[i] for i in sorted(idx[n_train+n_val:])]
+    print(f"Station split: {len(train_stations)} train / {len(val_stations)} val / {len(test_stations)} test")
+    return train_stations, val_stations, test_stations
+
+
+def build_pw_station_tensors(
+    daily_tmax: pd.DataFrame,
+    station_ids: list,
+    stations_meta: pd.DataFrame,
+    hi_res_tpi: xr.DataArray,
+    metadata: 'Era5Metadata',
+    seasonal_features: torch.Tensor | None,
+    dates_pd: pd.DatetimeIndex,
+    device: torch.device | None = None,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Returns x (T, M, 6) and y_norm (T, M) for the given station subset.
+    y is normalized using metadata.data_mean / data_std.
+    """
+    if device is None:
+        device = torch.device('cpu')
+
+    meta = stations_meta.loc[station_ids]
+    lats = meta['latitude'].values.astype(np.float32)
+    lons = meta['longitude'].values.astype(np.float32)
+    alts = meta['station_height'].values.astype(np.float32)
+    easting  = meta['swiss_easting'].values
+    northing = meta['swiss_northing'].values
+
+    lat_norm = (lats - metadata.lat_min) / (metadata.lat_max - metadata.lat_min)
+    lon_norm = (lons - metadata.lon_min) / (metadata.lon_max - metadata.lon_min)
+    alt_norm = alts / 4500.0
+
+    tpi_vals = hi_res_tpi.interp(
+        x=xr.DataArray(easting,  dims='point'),
+        y=xr.DataArray(northing, dims='point'),
+        method='nearest',
+    ).values.astype(np.float32)
+    tpi_vals = np.nan_to_num(tpi_vals, nan=0.0)
+    mTPI_norm = (tpi_vals - (-200.0)) / 400.0
+
+    # Static attrs (M, 4)
+    static = np.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], axis=1)
+    static_t = torch.tensor(static, dtype=torch.float32)  # (M, 4)
+
+    T = len(dates_pd)
+    M = len(station_ids)
+
+    # Expand static to (T, M, 4) and add seasonal (T, M, 2)
+    static_exp = static_t.unsqueeze(0).expand(T, -1, -1)  # (T, M, 4)
+    if seasonal_features is not None:
+        seas_exp = seasonal_features.unsqueeze(1).expand(-1, M, -1)  # (T, M, 2)
+        x = torch.cat([static_exp, seas_exp], dim=-1).to(device)     # (T, M, 6)
+    else:
+        x = static_exp.to(device)
+
+    # Observations: align dates, normalize
+    obs = daily_tmax.reindex(index=dates_pd)[station_ids].values.astype(np.float32)  # (T, M)
+    obs_norm = (obs + KELVIN_OFFSET - metadata.data_mean) / metadata.data_std
+    y = torch.tensor(obs_norm, dtype=torch.float32).to(device)  # (T, M)
+
+    return x, y
+
+
+def compute_pw_metadata(
+    daily_tmax: pd.DataFrame,
+    train_stations: list,
+    era5_metadata: 'Era5Metadata',
+) -> 'Era5Metadata':
+    """
+    Returns a metadata object with data_mean/data_std from PW train stations.
+    Reuses lat/lon bounds from ERA5 metadata (same Switzerland domain).
+    """
+    train_vals = daily_tmax[train_stations].values.ravel()
+    train_vals = train_vals[~np.isnan(train_vals)]
+    # Convert °C to Kelvin to match ERA5 convention
+    train_k = train_vals + KELVIN_OFFSET
+    pw_mean = float(np.mean(train_k))
+    pw_std  = float(np.std(train_k))
+    print(f"PW train stats: mean={pw_mean:.2f} K, std={pw_std:.2f} K")
+    # Shallow-copy metadata with updated stats
+    import copy
+    pw_meta = copy.copy(era5_metadata)
+    pw_meta.data_mean = pw_mean
+    pw_meta.data_std  = pw_std
+    return pw_meta
+

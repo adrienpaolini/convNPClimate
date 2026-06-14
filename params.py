@@ -69,6 +69,13 @@ class Params:
     PE_DIM:  int   = 32     # positional encoding output dimension
 
 
+    PW_TRAIN_FRAC: float = 0.6
+    PW_VAL_FRAC: float = 0.2
+    STATION_SPLIT_SEED: int = 42
+    CONTEXT_TYPE: str = 'era5'   # 'era5' | 'peakweather'
+
+
+
     def __post_init__(self):
         assert self.N_EPOCHS > 0, "N_EPOCHS must be positive"
         assert self.BATCH_SIZE > 0, "BATCH_SIZE must be positive"
