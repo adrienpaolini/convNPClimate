@@ -109,3 +109,59 @@ def skill_score(crps_model, crps_reference):
     if crps_reference == 0:
         return np.nan
     return 1.0 - (crps_model / crps_reference)
+
+@dataclasses.dataclass
+class StationMetrics:
+    """Results of per-station metric computation over all holdout folds."""
+    mae:        np.ndarray   # (n_stations,)
+    rmse:       np.ndarray   # (n_stations,)
+    bias:       np.ndarray   # (n_stations,)
+    crps:       np.ndarray   # (n_stations,)
+    mean_sigma: np.ndarray   # (n_stations,)
+    skill:      np.ndarray   # (n_stations,)
+    overall_crps: float
+    global_skill: float
+
+
+def compute_station_metrics(
+    all_errors: np.ndarray,
+    all_preds: np.ndarray,
+    all_sigmas: np.ndarray,
+    all_truths: np.ndarray,
+    all_ref_preds: np.ndarray,
+) -> StationMetrics:
+    """Compute per-station evaluation metrics over combined holdout predictions.
+
+    Args:
+        all_errors:   (n_days, n_stations) pred - truth, Celsius.
+        all_preds:    (n_days, n_stations) denormalized predictions, Celsius.
+        all_sigmas:   (n_days, n_stations) predicted sigma, Celsius.
+        all_truths:   (n_days, n_stations) ground truth, Celsius.
+        all_ref_preds:(n_days, n_stations) baseline (e.g. kriging) predictions, Celsius.
+    """
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Mean of empty slice", category=RuntimeWarning)
+
+        mae        = np.nanmean(np.abs(all_errors), axis=0)
+        rmse       = np.sqrt(np.nanmean(all_errors ** 2, axis=0))
+        bias       = np.nanmean(all_errors, axis=0)
+        mean_sigma = np.nanmean(all_sigmas, axis=0)
+
+        crps_all     = ps.crps_gaussian(all_truths, mu=all_preds, sig=all_sigmas)
+        crps         = np.nanmean(crps_all, axis=0)
+        overall_crps = float(np.nanmean(crps_all))
+
+        crps_ref_all = np.abs(all_ref_preds - all_truths)
+        crps_ref     = np.nanmean(crps_ref_all, axis=0)
+
+    global_skill = skill_score(np.nanmean(crps_all), np.nanmean(crps_ref_all))
+    with np.errstate(divide='ignore', invalid='ignore'):
+        skill = np.where(crps_ref > 0, 1.0 - (crps / crps_ref), np.nan)
+
+    return StationMetrics(
+        mae=mae, rmse=rmse, bias=bias, crps=crps,
+        mean_sigma=mean_sigma, skill=skill,
+        overall_crps=overall_crps,
+        global_skill=float(global_skill),
+    )
+

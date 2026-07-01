@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import numpy as np
 import torch
 import torch.nn as nn
+import pandas as pd
 
 import datasets as ds
 from convCNP.training.utils import get_sigma_tmax, get_value_tmax
@@ -117,3 +118,55 @@ def predict_holdout_fold_smacnp(
         sigmas=np.stack(fold_sigmas, axis=0),
         truths=np.stack(fold_truths, axis=0),
     )
+
+def compute_kriging_baseline(
+    daily_tmax: 'pd.DataFrame',
+    train_stations: list,
+    test_stations: list,
+    stations_meta: 'pd.DataFrame',
+    dates_pd: 'pd.DatetimeIndex',
+) -> np.ndarray:
+    """
+    Compute a regression kriging baseline for each day: predict test station
+    tmax from train station observations using Universal Kriging with a
+    regional linear drift (lat, lon as external drift terms).
+
+    Returns:
+        baseline: (n_days, n_test_stations) array of predictions in °C.
+                  NaN where kriging cannot be computed (< 4 valid context obs).
+    """
+    try:
+        from pykrige.uk import UniversalKriging
+    except ImportError:
+        raise ImportError("pykrige is required for the kriging baseline. "
+                          "Run: pip install pykrige")
+
+    train_meta = stations_meta.loc[train_stations]
+    test_meta  = stations_meta.loc[test_stations]
+    train_lats = train_meta['latitude'].values.astype(np.float64)
+    train_lons = train_meta['longitude'].values.astype(np.float64)
+    test_lats  = test_meta['latitude'].values.astype(np.float64)
+    test_lons  = test_meta['longitude'].values.astype(np.float64)
+
+    n_days  = len(dates_pd)
+    n_test  = len(test_stations)
+    baseline = np.full((n_days, n_test), np.nan, dtype=np.float32)
+
+    for i, date in enumerate(dates_pd):
+        obs = daily_tmax.loc[date, train_stations].values.astype(np.float64)
+        valid = ~np.isnan(obs)
+        if valid.sum() < 4:
+            continue
+        try:
+            uk = UniversalKriging(
+                train_lons[valid], train_lats[valid], obs[valid],
+                variogram_model='spherical',
+                drift_terms=['regional_linear'],
+                verbose=False, enable_plotting=False,
+            )
+            preds, _ = uk.execute('points', test_lons, test_lats)
+            baseline[i] = preds.astype(np.float32)
+        except Exception:
+            pass
+
+    return baseline

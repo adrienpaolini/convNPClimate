@@ -1032,7 +1032,7 @@ def load_peakweather_stations(
     first_date: str,
     last_date: str,
     validity_threshold: float = 0.9,
-    station_type: str = 'meteo_station',
+    station_type: str | None = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, list]:
     """
     Load PeakWeather station data and return daily tmax observations.

@@ -1342,3 +1342,35 @@ def get_lat_lon_arrays(
 
     return context_lats, context_lons, target_lats, target_lons
 
+def plot_station_skill_map(
+    skill_per_station: np.ndarray,
+    station_lats: np.ndarray,
+    station_lons: np.ndarray,
+    global_skill: float,
+    title: str,
+    skill_range: tuple[float, float] = (-0.5, 1.0),
+    save_path=None,
+) -> plt.Figure:
+    """
+    Scatter map of per-station skill scores over Switzerland.
+    Skill = 1 - (CRPS_model / CRPS_baseline).
+    """
+    fig, ax = plt.subplots(figsize=(8, 5))
+    sc = ax.scatter(
+        station_lons, station_lats, c=skill_per_station,
+        cmap='RdYlGn', vmin=skill_range[0], vmax=skill_range[1],
+        s=60, edgecolors='k', linewidths=0.3,
+    )
+    plt.colorbar(sc, ax=ax, label='Skill score')
+    valid = skill_per_station[~np.isnan(skill_per_station)]
+    stats_text = (f'Global skill: {global_skill:.3f}\n'
+                  f'Median station skill: {np.median(valid):.3f}')
+    ax.text(0.02, 0.98, stats_text, transform=ax.transAxes,
+            verticalalignment='top', fontsize=10,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+    ax.set_xlabel('Longitude')
+    ax.set_ylabel('Latitude')
+    fig.suptitle(title, fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    _save_fig(fig, save_path)
+    return fig
