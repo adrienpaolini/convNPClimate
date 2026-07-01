@@ -1032,7 +1032,8 @@ def load_peakweather_stations(
     first_date: str,
     last_date: str,
     validity_threshold: float = 0.9,
-    station_type: str | None = None,
+    station_type: str = None,
+    aggregation_method: str = 'max',
 ) -> Tuple[pd.DataFrame, pd.DataFrame, list]:
     """
     Load PeakWeather station data and return daily tmax observations.
@@ -1047,7 +1048,7 @@ def load_peakweather_stations(
     Returns
     -------
     daily_tmax_pw : pd.DataFrame (days, n_valid_stations)
-        Daily maximum temperature in °C; NaN where data is missing.
+        Daily maximum temperature in °C (default); NaN where data is missing.
         Index is timezone-naive to align with ERA5 dates.
     stations_meta : pd.DataFrame
         Rows from pw_ds.stations_table for valid stations.
@@ -1068,8 +1069,9 @@ def load_peakweather_stations(
         station_type=station_type,
         imputation_method=None,
         freq='D',
-        aggregation_methods={'temperature': 'max'},
+        aggregation_methods={'temperature': aggregation_method},
     )
+
 
     df = pw_ds.get_observations(
         parameters=['temperature'],
