@@ -91,6 +91,9 @@ class DataPaths:
     METEO_SWISS_MAX_TEMP_GLOB: str
     METEO_SWISS_PRECIP_GLOB: str
     HI_RES_TOPOGRAPHY_ZARR_PATH: str
+    ERA5_MEAN_TEMP_GLOB: str
+    METEO_SWISS_MEAN_TEMP_GLOB: str
+
 
 
 def build_data_paths(base_dataset_dir: Path | str) -> DataPaths:
@@ -112,6 +115,8 @@ def build_data_paths(base_dataset_dir: Path | str) -> DataPaths:
         METEO_SWISS_MAX_TEMP_GLOB=str(base / 'MeteoSwiss/TmaxD_v2.0_swiss.lv95') + '/*.nc',
         METEO_SWISS_PRECIP_GLOB=str(base / 'MeteoSwiss/RhiresD_v2.0_swiss.lv95') + '/*.nc',
         HI_RES_TOPOGRAPHY_ZARR_PATH=str(base / 'topo_subset.zarr'),
+        ERA5_MEAN_TEMP_GLOB=str(base / 'ERA5_Land/temperature') + '/*.nc',
+        METEO_SWISS_MEAN_TEMP_GLOB=str(base / 'MeteoSwiss/TabsD_v2.0_swiss.lv95') + '/*.nc',
     )
 
 

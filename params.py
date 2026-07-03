@@ -18,7 +18,8 @@ class Params:
     # Data and mode parameters
     VARIABLE: Literal['tmax', 'precip'] = 'tmax'
     DATA_YEAR_START: int | None = 2023  # Year to start loading data from, None to include all data
-                                        # Used for quicker testing
+    TEMPERATURE_TYPE: Literal['max', 'mean'] = 'max'
+
 
     # Ablation parameters
     SEASONAL_FEATURES: bool = True  # Whether to include seasonal features (cos/sin of day-of-year) at all
@@ -56,6 +57,8 @@ class Params:
     ERA5_MAX_TEMP_GLOB: str | None = None
     ERA5_GEOPOTENTIAL_GLOB: str | None = None
     METEO_SWISS_MAX_TEMP_GLOB: str | None = None
+    ERA5_MEAN_TEMP_GLOB: str | None = None
+    METEO_SWISS_MEAN_TEMP_GLOB: str | None = None
     HI_RES_TOPOGRAPHY_ZARR_PATH: str | None = None
 
     # SMACNP architecture parameters (only used when MODEL_TYPE='smacnp')
@@ -83,6 +86,7 @@ class Params:
         assert self.LR > 0, "LR must be positive"
         assert self.VARIABLE in ('tmax', 'precip'), f"Unknown VARIABLE: {self.VARIABLE}"
         assert self.RUN_TYPE in ('local', 'cloud'), f"Unknown RUN_TYPE: {self.RUN_TYPE}"
+        assert self.TEMPERATURE_TYPE in ('max', 'mean'), f"Unknown TEMPERATURE_TYPE: {self.TEMPERATURE_TYPE}"
         assert (not (not self.SEASONAL_FEATURES and self.SEASONAL_FEATURES_IN_MLP),
                 "SEASONAL_FEATURES_IN_MLP cannot be True if SEASONAL_FEATURES (master switch) is False")
 
@@ -103,6 +107,8 @@ class Params:
             ERA5_GEOPOTENTIAL_GLOB=data_paths.ERA5_GEOPOTENTIAL_GLOB,
             METEO_SWISS_MAX_TEMP_GLOB=data_paths.METEO_SWISS_MAX_TEMP_GLOB,
             HI_RES_TOPOGRAPHY_ZARR_PATH=data_paths.HI_RES_TOPOGRAPHY_ZARR_PATH,
+            ERA5_MEAN_TEMP_GLOB=data_paths.ERA5_MEAN_TEMP_GLOB,
+            METEO_SWISS_MEAN_TEMP_GLOB=data_paths.METEO_SWISS_MEAN_TEMP_GLOB,
         )
 
     def save_json(self, output_path: Path) -> None:
