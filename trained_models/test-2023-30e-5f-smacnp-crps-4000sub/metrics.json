@@ -2,37 +2,37 @@
   "config": {
     "model_name": "test-2023-30e-5f-smacnp-crps-4000sub",
     "inference_dataset": "peakweather",
-    "n_stations": 148,
+    "n_stations": 174,
     "n_folds": 5,
     "holdout_days": 365,
     "pw_first_date": "2023-01-01",
     "pw_last_date": "2024-12-31",
-    "pw_validity_threshold": 0.9
+    "pw_validity_threshold": 0.99
   },
   "overall": {
-    "mae": 2.6604068279266357,
-    "rmse": 3.413238763809204,
-    "bias": -0.40240412950515747,
-    "crps": 2.040561229701585
+    "mae": 2.6697072982788086,
+    "rmse": 3.4226527214050293,
+    "bias": -0.43599480390548706,
+    "crps": 2.043945900631552
   },
   "correlations": {
-    "uncertainty_error": 0.10834352517041711,
-    "altitude_error": 0.12131409946211809,
-    "mtpi_error": 0.3160194087614602,
-    "doy_error": -0.030878870674898296
+    "uncertainty_error": 0.07043582625393754,
+    "altitude_error": 0.08097510257827993,
+    "mtpi_error": 0.21261425892032515,
+    "doy_error": -0.04940938782277265
   },
   "calibration": {
-    "pit_mean": 0.5372133042586787,
-    "pit_std": 0.36974222601137313,
-    "z_std": 2.0244200229644775,
-    "coverage_50": 0.3027531445957478,
-    "coverage_90": 0.632406960780676,
+    "pit_mean": 0.5389739013571725,
+    "pit_std": 0.36938547453768006,
+    "z_std": 2.0096261501312256,
+    "coverage_50": 0.30302361857343185,
+    "coverage_90": 0.6338884774764838,
     "ks_p_value": 0.0
   },
   "reliability": {
-    "mace": 0.17728915439130274,
-    "coverage_at_50": 0.2999703165003154,
-    "coverage_at_90": 0.6214982746465808,
-    "coverage_at_95": 0.6903454417275797
+    "mace": 0.1770587864559535,
+    "coverage_at_50": 0.30015598657570075,
+    "coverage_at_90": 0.6226542927820757,
+    "coverage_at_95": 0.6918713662218161
   }
 }
