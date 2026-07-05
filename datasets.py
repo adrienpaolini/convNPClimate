@@ -1242,3 +1242,33 @@ def compute_pw_metadata(
         lon_coords=np.linspace(lon_min, lon_max, 61),
     )
 
+def extract_meteoswiss_at_pw_stations(
+    ms_glob: str | Path,
+    var_name: str,          # 'TabsD' or 'TmaxD'
+    stations_meta: pd.DataFrame,
+    station_ids: list[str],
+    year_start: int | None = None,
+) -> pd.DataFrame:
+    """
+    Extract MeteoSwiss grid cell values at PeakWeather station locations.
+    """
+    ms_ds = xr.open_mfdataset(str(ms_glob), combine='by_coords')
+    if year_start is not None:
+        ms_ds = ms_ds.sel(time=slice(f'{year_start}-01-01', None))
+
+    ms_N = ms_ds['N'].values
+    ms_E = ms_ds['E'].values
+
+    station_cell = {}
+    for stn in station_ids:
+        n_idx = int(np.argmin(np.abs(ms_N - stations_meta.loc[stn, 'swiss_northing'])))
+        e_idx = int(np.argmin(np.abs(ms_E - stations_meta.loc[stn, 'swiss_easting'])))
+        station_cell[stn] = (n_idx, e_idx)
+
+    times = pd.DatetimeIndex(ms_ds['time'].values)
+    out = np.full((len(times), len(station_ids)), np.nan, dtype=np.float32)
+    for j, stn in enumerate(station_ids):
+        n_idx, e_idx = station_cell[stn]
+        out[:, j] = ms_ds[var_name].isel(N=n_idx, E=e_idx).values.astype(np.float32)
+
+    return pd.DataFrame(out, index=times, columns=station_ids)
