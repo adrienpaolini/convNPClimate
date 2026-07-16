@@ -957,6 +957,40 @@ def build_smacnp_context(
 
     return x_context, y_context
 
+def build_combined_context(
+    era5_x: torch.Tensor,    # (T, N_era5, 6)
+    era5_y: torch.Tensor,    # (T, N_era5, 1)
+    pw_x:   torch.Tensor,    # (T, N_pw,   6)
+    pw_y:   torch.Tensor,    # (T, N_pw,   1)
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """
+    Combine ERA5 grid and PW station context into a single point set.
+
+    Appends a source flag (0 = ERA5 reanalysis, 1 = PW station) as the 7th
+    feature of x_context so the model can learn source-specific attention weights.
+
+    Returns
+    -------
+    x_combined : (T, N_era5 + N_pw, 7)
+    y_combined : (T, N_era5 + N_pw, 1)
+    """
+    T, N_era5, _ = era5_x.shape
+    T_pw, N_pw, _ = pw_x.shape
+    assert T == T_pw, f"ERA5 and PW time dims differ: {T} vs {T_pw}"
+
+    era5_flag = torch.zeros(T, N_era5, 1, device=era5_x.device)
+    pw_flag   = torch.ones( T, N_pw,   1, device=pw_x.device)
+
+    x_combined = torch.cat([
+        torch.cat([era5_x, era5_flag], dim=-1),   # (T, N_era5, 7)
+        torch.cat([pw_x,   pw_flag],   dim=-1),   # (T, N_pw,   7)
+    ], dim=1)                                      # (T, N_era5+N_pw, 7)
+
+    y_combined = torch.cat([era5_y, pw_y], dim=1) # (T, N_era5+N_pw, 1)
+
+    return x_combined, y_combined
+
+
 def build_smacnp_targets(
     target_x: xr.DataArray,
     target_y_da: xr.DataArray,

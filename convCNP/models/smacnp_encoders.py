@@ -43,7 +43,7 @@ class MeanLocationEncoder(nn.Module):
 class GlobalMeanAttributeEncoder(nn.Module):
    
     def __init__(self, input_dim, y_dim, hidden_size, r_dim, num_heads, dropout_rate, 
-                 num_layers_mlp=1, use_positional_encoding=False, pe_dim=64, pe_type='sinusoidal', 
+                 num_layers_mlp=1, context_input_dim=None, use_positional_encoding=False, pe_dim=64, pe_type='sinusoidal', 
                  pe_scales=None, pe_scale_dims=None, pe_coordinate_range='normalized', 
                  pe_original_bounds=None, pe_learnable=False, use_layer_norm=True, **kwargs):
         super().__init__()
@@ -85,14 +85,18 @@ class GlobalMeanAttributeEncoder(nn.Module):
             actual_input_dim = input_dim + actual_pe_dim
         else:
             actual_input_dim = input_dim
-        
+
+        _pe_extra = actual_pe_dim if use_positional_encoding else 0
+        actual_context_input_dim = (context_input_dim + _pe_extra
+                                    if context_input_dim is not None
+                                    else actual_input_dim)        
         
         # Value encoding: r = MLP(x, y) - includes target values
-        self.mlp_value = _create_mlp(actual_input_dim + y_dim, r_dim, hidden_size, 
+        self.mlp_value = _create_mlp(actual_context_input_dim + y_dim, r_dim, hidden_size, 
                                      num_layers_mlp, dropout_rate)
         
         # Key encoding: MLP(x) - attributes ONLY, NO target values!
-        self.mlp_key = _create_mlp(actual_input_dim, r_dim, hidden_size, 
+        self.mlp_key = _create_mlp(actual_context_input_dim, r_dim, hidden_size, 
                                    num_layers_mlp, dropout_rate)
         
         # Query encoding: MLP(x*) - target attributes
@@ -151,12 +155,9 @@ class GlobalVarianceEncoder(nn.Module):
     - Variance is INDEPENDENT of target values y
     - v = MLP_φ(s, x) - encodes spatial + attributes
     - v* = Multi-head attention(v, s*, x*)
-    
-    Note: Since variance encoder doesn't use y, the key/value separation 
-    is less critical. We still implement it consistently for clarity.
     """
     def __init__(self, input_dim, hidden_size, v_dim, num_heads, dropout_rate, 
-                 num_layers_mlp=1, use_positional_encoding=False, pe_dim=64, pe_type='sinusoidal', 
+                 num_layers_mlp=1, context_input_dim=None, use_positional_encoding=False, pe_dim=64, pe_type='sinusoidal', 
                  pe_scales=None, pe_scale_dims=None, pe_coordinate_range='normalized', 
                  pe_original_bounds=None, pe_learnable=False, use_layer_norm=True, spatial_dim=2, **kwargs):
         super().__init__()
@@ -201,9 +202,15 @@ class GlobalVarianceEncoder(nn.Module):
         
         # Include spatial dimension in input (variance encoder uses s + x)
         actual_input_dim += spatial_dim
+
+        _pe_extra = actual_pe_dim if use_positional_encoding else 0
+        if context_input_dim is not None:
+            actual_context_input_dim = context_input_dim + _pe_extra + spatial_dim
+        else:
+            actual_context_input_dim = actual_input_dim
         
         # v = MLP(s, x) for both key and value (no y involved anyway)
-        self.mlp_kv = _create_mlp(actual_input_dim, v_dim, hidden_size, num_layers_mlp, dropout_rate)
+        self.mlp_kv = _create_mlp(actual_context_input_dim, v_dim, hidden_size, num_layers_mlp, dropout_rate)
         
         # Query: MLP(s*, x*)
         self.mlp_query = _create_mlp(actual_input_dim, v_dim, hidden_size, num_layers_mlp, dropout_rate)

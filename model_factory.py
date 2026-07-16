@@ -92,7 +92,7 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
 
     return model, loss_fn, get_value_fn
 
-def build_smacnp(params: Params, input_dim: int) -> tuple[nn.Module, LossFn, GetValueFn]:
+def build_smacnp(params: Params, input_dim: int, context_input_dim: int = None) -> tuple[nn.Module, LossFn, GetValueFn]:
     """
     Build the SMACNP temperature model.
 
@@ -105,12 +105,16 @@ def build_smacnp(params: Params, input_dim: int) -> tuple[nn.Module, LossFn, Get
     if params.VARIABLE != 'tmax':
         raise ValueError("SMACNP currently supports only VARIABLE='tmax'.")
 
-    attr_dim = input_dim - 2   # spatial_dim is always 2
+    attr_dim = input_dim - 2
+    context_attr_dim = (context_input_dim - 2
+                        if context_input_dim is not None
+                        else None)  
 
     model = SMACNP_ALL(
         input_dim=input_dim,
         spatial_dim=2,
-        attr_dim=attr_dim,           
+        attr_dim=attr_dim,
+        context_attr_dim=context_attr_dim,          
         y_dim=1,
         r_dim=params.R_DIM,
         w_dim=params.W_DIM,
@@ -128,11 +132,11 @@ def build_smacnp(params: Params, input_dim: int) -> tuple[nn.Module, LossFn, Get
 
     return model, crps_gaussian, get_value_tmax
 
-def load_model_checkpoint(checkpoint_path, p, device, input_dim=None):
+def load_model_checkpoint(checkpoint_path, p, device, input_dim=None, context_input_dim=None):
     if p.MODEL_TYPE == 'smacnp':
         if input_dim is None:
             raise ValueError("input_dim required for SMACNP — pass x_context.shape[-1]")
-        model, _, _ = build_smacnp(p, input_dim)
+        model, _, _ = build_smacnp(p, input_dim, context_input_dim)
     else:
         model, _, _ = build_model(p)
     

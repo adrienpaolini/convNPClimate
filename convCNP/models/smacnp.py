@@ -35,6 +35,7 @@ class SMACNP_ALL(nn.Module):
                  # Decoder Controls
                  gat_hidden_channels=16, gat_heads=4,
                  min_points_for_graph=10, initial_alpha_bias=-1.0,
+                 context_attr_dim=None,
                  **kwargs):
         
         super().__init__()
@@ -84,10 +85,12 @@ class SMACNP_ALL(nn.Module):
         
         self.mean_attr_encoder = GlobalMeanAttributeEncoder(
             encoder_input_dim, y_dim, hidden_size, r_dim, num_heads,
+            context_input_dim=context_attr_dim,
             use_layer_norm=use_layer_norm, **encoder_kwargs
         )
         self.variance_encoder = GlobalVarianceEncoder(
             encoder_input_dim, hidden_size, v_dim, num_heads,
+            context_input_dim=context_attr_dim,
             use_layer_norm=use_layer_norm, spatial_dim=spatial_dim, **encoder_kwargs
         )
         
