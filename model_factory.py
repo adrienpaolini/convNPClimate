@@ -99,8 +99,9 @@ def build_smacnp(params: Params, input_dim: int, context_input_dim: int = None) 
     Parameters
     ----------
     params    : Params dataclass (uses R_DIM, W_DIM, V_DIM, N_HEADS, etc.)
-    input_dim : total columns in x_context / x_target
-                (spatial_dim=2 always assumed; attr_dim = input_dim - 2)
+    input_dim        : feature columns in x_target (always 6 — no source flag on targets)
+    context_input_dim: feature columns in x_context (6 for ERA5-only or PW-only; 7 for combined)
+
     """
     if params.VARIABLE != 'tmax':
         raise ValueError("SMACNP currently supports only VARIABLE='tmax'.")
