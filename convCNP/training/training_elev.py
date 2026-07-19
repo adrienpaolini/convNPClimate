@@ -321,27 +321,34 @@ def train_elev(model,
                 print(f'Early stopping fold {fold} at epoch {epoch}: no improvement for {patience} epochs')
                 break
 
-def train_batch_smacnp(task, opt, model, ll, device=None):
-    """
-    Train one SMACNP batch.
-
-    task keys: 'x_context' (B,N,D), 'y_context' (B,N,1),
-               'x_target'  (B,M,D), 'y_target'  (B,M)
-    """
-    v   = model(task['x_context'], task['y_context'], task['x_target'])
-    obj = -ll(task['y_target'], v)
+def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None):
+    if context_fraction is not None:
+        xc_pool = task['x_context']          # (B, N_pool, D)
+        yc_pool = task['y_context']          # (B, N_pool, 1)
+        B, N, D = xc_pool.shape
+        n_ctx = max(1, int(context_fraction * N))
+        perm  = torch.randperm(N, device=xc_pool.device)
+        xc = xc_pool[:, perm[:n_ctx], :]    # random subset as context
+        yc = yc_pool[:, perm[:n_ctx], :]
+        xt = xc_pool                         # all pool stations as target (on-grid)
+        yt = torch.nan_to_num(yc_pool[:, :, 0], nan=0.0)
+    else:
+        xc, yc = task['x_context'], task['y_context']
+        xt, yt = task['x_target'],  task['y_target']
+    v   = model(xc, yc, xt)
+    obj = -ll(yt, v)
     obj.backward()
     opt.step()
     opt.zero_grad()
     return obj, opt, model
 
 
-def train_epoch_smacnp(model, opt, training_data, ll, device=None):
-    """Outer loop over batches for one epoch."""
+def train_epoch_smacnp(model, opt, training_data, ll, device=None, context_fraction=None):
     model.train()
     batch_objs = []
     for task in training_data:
-        obj, opt, model = train_batch_smacnp(task, opt, model, ll, device=device)
+        obj, opt, model = train_batch_smacnp(task, opt, model, ll, device=device,
+                                              context_fraction=context_fraction)
         batch_objs.append(float(obj.item()))
     return np.mean(np.array(batch_objs)[-5:])
 
@@ -393,7 +400,10 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
 def train_smacnp(model, opt, ll, x_context, y_context, x_target, y_target,
                  output_dir, get_value, fold, n_folds,
                  n_epochs=100, batch_size=16, patience=10,
-                 stats_file=None, device=None):
+                 stats_file=None, device=None,
+                 context_fraction=None,                       
+                 x_context_val=None, y_context_val=None,            
+                 x_target_val=None,  y_target_val=None):   
     """
     Top-level SMACNP training loop. Mirrors train_elev() in structure.
 
@@ -423,10 +433,13 @@ def train_smacnp(model, opt, ll, x_context, y_context, x_target, y_target,
 
             training_data, held_out = get_fold_data_smacnp(
                 (start, end), x_context, y_context, x_target, y_target,
-                batch_size=batch_size
+                batch_size=batch_size,
+                x_context_val=x_context_val, y_context_val=y_context_val,
+                x_target_val=x_target_val,   y_target_val=y_target_val,
             )
 
-            train_obj = train_epoch_smacnp(model, opt, training_data, ll, device=device)
+            train_obj = train_epoch_smacnp(model, opt, training_data, ll, device=device,
+                                            context_fraction=context_fraction)
             test_obj, med_mae, med_pears, med_spear = eval_epoch_smacnp(
                 model, held_out, ll, get_value, device=device)
 

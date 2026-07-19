@@ -102,7 +102,10 @@ def get_fold_data(inds, context, targets, shuffle=True, batch_size=16, seasonal=
     return training_data, held_out
 
 def get_fold_data_smacnp(inds, x_context, y_context, x_target, y_target,
-                          shuffle=True, batch_size=16):
+                          shuffle=True, batch_size=16,
+                          x_context_val=None, y_context_val=None,
+                          x_target_val=None,  y_target_val=None):
+
     """
     Split point-format SMACNP data into training and held-out folds.
 
@@ -134,6 +137,15 @@ def get_fold_data_smacnp(inds, x_context, y_context, x_target, y_target,
     yc_tr, yc_ho = _split(y_context, *inds)
     xt_tr, xt_ho = _split(x_target,  *inds)
     yt_tr, yt_ho = _split(y_target,  *inds)
+
+    if x_context_val is not None:
+        _, xc_ho = _split(x_context_val, *inds)
+        _, yc_ho = _split(y_context_val, *inds)
+    if x_target_val is not None:
+        if x_target_val.dim() == 2:
+            x_target_val = x_target_val.unsqueeze(0).expand(x_context.shape[0], -1, -1)
+        _, xt_ho = _split(x_target_val, *inds)
+        _, yt_ho = _split(y_target_val, *inds)
 
     if shuffle:
         idx = torch.randperm(xc_tr.shape[0])
