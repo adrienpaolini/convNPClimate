@@ -323,15 +323,15 @@ def train_elev(model,
 
 def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None):
     if context_fraction is not None:
-        xc_pool = task['x_context']          # (B, N_pool, D)
-        yc_pool = task['y_context']          # (B, N_pool, 1)
+        xc_pool = task['x_context']       # (B, N_pool, D) — pool locations
+        yc_pool = task['y_context']       # (B, N_pool, 1) — context values (PW)
         B, N, D = xc_pool.shape
         n_ctx = max(1, int(context_fraction * N))
         perm  = torch.randperm(N, device=xc_pool.device)
-        xc = xc_pool[:, perm[:n_ctx], :]    # random subset as context
+        xc = xc_pool[:, perm[:n_ctx], :]
         yc = yc_pool[:, perm[:n_ctx], :]
-        xt = xc_pool                         # all pool stations as target (on-grid)
-        yt = torch.nan_to_num(yc_pool[:, :, 0], nan=0.0)
+        xt = task['x_target']             # on-grid: same as xc_pool
+        yt = task['y_target']             # target values — PW or MS depending on notebook
     else:
         xc, yc = task['x_context'], task['y_context']
         xt, yt = task['x_target'],  task['y_target']
@@ -341,6 +341,7 @@ def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None)
     opt.step()
     opt.zero_grad()
     return obj, opt, model
+
 
 
 def train_epoch_smacnp(model, opt, training_data, ll, device=None, context_fraction=None):
