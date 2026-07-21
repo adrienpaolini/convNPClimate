@@ -335,8 +335,9 @@ def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None)
     else:
         xc, yc = task['x_context'], task['y_context']
         xt, yt = task['x_target'],  task['y_target']
-    v   = model(xc, yc, xt)
-    obj = -ll(yt, v)
+    v     = model(xc, yc, xt)
+    valid = ~torch.isnan(yt)
+    obj   = -ll(yt[valid], v[valid]) if not valid.all() else -ll(yt, v)
     obj.backward()
     opt.step()
     opt.zero_grad()
@@ -369,7 +370,9 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
     predictions     = torch.cat(preds_list)
     targets_complete = torch.cat(targets_list)
 
-    eval_ll = -ll(targets_complete, predictions)
+    valid   = ~torch.isnan(targets_complete)
+    eval_ll = -ll(targets_complete[valid], predictions[valid]) if not valid.all() \
+            else -ll(targets_complete, predictions)
     predictions = get_value(predictions)
 
     n_stations = predictions.shape[1]
