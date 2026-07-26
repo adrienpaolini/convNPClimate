@@ -342,7 +342,10 @@ def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None)
         xt, yt = task['x_target'],  task['y_target']
     v     = model(xc, yc, xt)
     valid = ~torch.isnan(yt)
-    obj   = -ll(yt[valid], v[valid]) if not valid.all() else -ll(yt, v)
+    if not valid.any():
+        opt.zero_grad()
+        return torch.tensor(float('nan')), opt, model
+    obj = -ll(yt[valid], v[valid]) if not valid.all() else -ll(yt, v)
     obj.backward()
     opt.step()
     opt.zero_grad()
@@ -357,7 +360,9 @@ def train_epoch_smacnp(model, opt, training_data, ll, device=None, context_fract
         obj, opt, model = train_batch_smacnp(task, opt, model, ll, device=device,
                                               context_fraction=context_fraction)
         batch_objs.append(float(obj.item()))
-    return np.mean(np.array(batch_objs)[-5:])
+    arr = np.array(batch_objs, dtype=float)
+    arr = arr[~np.isnan(arr)]
+    return float(np.mean(arr[-5:])) if len(arr) > 0 else float('nan')
 
 
 def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
