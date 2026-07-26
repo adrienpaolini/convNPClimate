@@ -326,7 +326,12 @@ def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None)
         xc_pool = task['x_context']       # (B, N_pool, D) — pool locations
         yc_pool = task['y_context']       # (B, N_pool, 1) — context values (PW)
         B, N, D = xc_pool.shape
-        n_ctx = max(1, int(context_fraction * N))
+        if isinstance(context_fraction, (list, tuple)):
+            lo, hi = context_fraction
+            frac = lo + torch.rand(1).item() * (hi - lo)
+        else:
+            frac = context_fraction
+        n_ctx = max(1, int(frac * N))
         perm  = torch.randperm(N, device=xc_pool.device)
         xc = xc_pool[:, perm[:n_ctx], :]
         yc = yc_pool[:, perm[:n_ctx], :]
