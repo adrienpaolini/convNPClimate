@@ -68,6 +68,7 @@ class Params:
     V_DIM:   int   = 128    # variance representation dimension
     N_HEADS: int   = 4      # attention heads
     SMACNP_HIDDEN: int = 128  # MLP hidden width in encoders/decoders
+    NUM_LAYERS_MLP: int = 1  
     USE_PE:  bool  = True   # sinusoidal positional encoding
     PE_DIM:  int   = 32     # positional encoding output dimension
 

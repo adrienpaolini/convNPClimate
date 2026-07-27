@@ -1,0 +1,42 @@
+{
+  "config": {
+    "model_name": "test-100e-ms-pw-stations-mean-3",
+    "inference_dataset": "meteoswiss_at_pw_stations",
+    "context": "peakweather_train_stations",
+    "n_context_stations": 137,
+    "n_test_stations": 35,
+    "station_split_seed": 42,
+    "n_folds": 5,
+    "holdout_days": 2557,
+    "pw_first_date": "2017-01-01",
+    "pw_last_date": "2024-12-31",
+    "pw_validity_threshold": 0.99
+  },
+  "overall": {
+    "mae": 2.4751014709472656,
+    "rmse": 2.793612241744995,
+    "bias": 0.18927061557769775,
+    "crps": 2.297939313318878,
+    "skill_score": -0.12941660158580715
+  },
+  "correlations": {
+    "uncertainty_error": 0.39724571003139836,
+    "altitude_error": 0.5343448387862477,
+    "mtpi_error": 0.4349840523575515,
+    "doy_error": -0.20895841977918111
+  },
+  "calibration": {
+    "pit_mean": 0.5365751082066236,
+    "pit_std": 0.46658616865112884,
+    "z_std": 9.856468200683594,
+    "coverage_50": 0.07479747471925806,
+    "coverage_90": 0.1801441421308453,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.4268087602659366,
+    "coverage_at_50": 0.07395943907480865,
+    "coverage_at_90": 0.17586457343985698,
+    "coverage_at_95": 0.20489412816358457
+  }
+}
