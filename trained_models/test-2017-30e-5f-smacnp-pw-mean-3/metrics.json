@@ -1,0 +1,42 @@
+{
+  "config": {
+    "model_name": "test-2017-30e-5f-smacnp-pw-mean-3",
+    "inference_dataset": "peakweather",
+    "context": "peakweather_train_stations",
+    "n_context_stations": 137,
+    "n_test_stations": 35,
+    "station_split_seed": 42,
+    "n_folds": 5,
+    "holdout_days": 2921,
+    "pw_first_date": "2017-01-01",
+    "pw_last_date": "2024-12-31",
+    "pw_validity_threshold": 0.99
+  },
+  "overall": {
+    "mae": 2.608142852783203,
+    "rmse": 2.984029531478882,
+    "bias": 0.38220667839050293,
+    "crps": 2.42071358029059,
+    "skill_score": -0.13590661749635258
+  },
+  "correlations": {
+    "uncertainty_error": 0.46763064320395187,
+    "altitude_error": 0.5913782265728775,
+    "mtpi_error": 0.41635899063577364,
+    "doy_error": -0.19830344385367787
+  },
+  "calibration": {
+    "pit_mean": 0.5209667304238291,
+    "pit_std": 0.4667020945441989,
+    "z_std": 9.886565208435059,
+    "coverage_50": 0.07563847802891628,
+    "coverage_90": 0.18546942451324921,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.42466879411102526,
+    "coverage_at_50": 0.07473790342316239,
+    "coverage_at_90": 0.1807707743962724,
+    "coverage_at_95": 0.21225173018001703
+  }
+}
