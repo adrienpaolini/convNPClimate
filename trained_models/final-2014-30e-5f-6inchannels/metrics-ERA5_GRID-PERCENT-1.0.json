@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-6inchannels",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "PERCENT",
+    "sparsity_value": 1.0,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 2.122065305709839,
+    "rmse": 2.563538074493408,
+    "bias": -1.7545589208602905,
+    "crps": 1.537730827327631,
+    "skill_score": 0.3941863172029133
+  },
+  "correlations": {
+    "uncertainty_error": 0.5662835502962874,
+    "altitude_error": 0.6430043079934759,
+    "mtpi_error": -0.008747238402041547,
+    "doy_error": -0.0732886017076769
+  },
+  "calibration": {
+    "pit_mean": 0.749827200125358,
+    "pit_std": 0.24807027971629395,
+    "z_std": 1.1214995384216309,
+    "coverage_50": 0.32617811926205226,
+    "coverage_90": 0.7316402141496646,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.13863631745027272,
+    "coverage_at_50": 0.3225784761469003,
+    "coverage_at_90": 0.7182692997958856,
+    "coverage_at_95": 0.7993495978551273
+  }
+}
