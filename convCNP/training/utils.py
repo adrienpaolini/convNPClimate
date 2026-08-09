@@ -166,6 +166,46 @@ def get_fold_data_smacnp(inds, x_context, y_context, x_target, y_target,
            _to_batches(xc_ho, yc_ho, xt_ho, yt_ho)
 
 
+def get_fold_data_smacnp_era5pw(inds, x_era5, y_era5, x_pw, y_pw,
+                                  shuffle=True, batch_size=16):
+    """
+    Temporal fold split for NP-style ERA5+PW training.
+    Returns task dicts with separate keys for ERA5 and PW — the per-batch
+    context/target split of PW stations is deferred to train_batch_smacnp.
+
+    Parameters
+    ----------
+    x_era5 : (T, 1769, 6)   ERA5 context attributes — always in context
+    y_era5 : (T, 1769, 1)   ERA5 temperature values
+    x_pw   : (T, N_pw, 6)   PW station attributes — split per batch
+    y_pw   : (T, N_pw, 1)   PW observations, NaN preserved for target masking
+    """
+    start, end = inds
+
+    def _split(arr):
+        return torch.cat([arr[:start], arr[end:]], dim=0), arr[start:end]
+
+    era5_tr,  era5_ho  = _split(x_era5)
+    yera5_tr, yera5_ho = _split(y_era5)
+    pw_tr,    pw_ho    = _split(x_pw)
+    ypw_tr,   ypw_ho   = _split(y_pw)
+
+    if shuffle:
+        def _shuffle4(a, b, c, d):
+            idx = torch.randperm(a.shape[0])
+            return a[idx], b[idx], c[idx], d[idx]
+        era5_tr,  yera5_tr, pw_tr,  ypw_tr  = _shuffle4(era5_tr,  yera5_tr, pw_tr,  ypw_tr)
+        era5_ho, yera5_ho, pw_ho, ypw_ho = _shuffle4(era5_ho, yera5_ho, pw_ho, ypw_ho)
+
+    def _batch(xe, ye, xp, yp):
+        return [{'x_era5': xe_b, 'y_era5': ye_b, 'x_pw': xp_b, 'y_pw': yp_b}
+                for xe_b, ye_b, xp_b, yp_b in zip(
+                    torch.split(xe, batch_size), torch.split(ye, batch_size),
+                    torch.split(xp, batch_size), torch.split(yp, batch_size))]
+
+    return _batch(era5_tr, yera5_tr, pw_tr, ypw_tr), \
+           _batch(era5_ho, yera5_ho, pw_ho, ypw_ho)
+
 def make_r_mask(target_vals):
     """
     Make the r mask for the Bernoulli precipitation distribution

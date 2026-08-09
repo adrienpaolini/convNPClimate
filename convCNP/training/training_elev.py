@@ -11,7 +11,7 @@ import os
 import scipy
 from scipy.stats import NearConstantInputWarning
 import warnings
-from .utils import log_exp, generate_context_mask, get_fold_data, get_fold_data_smacnp
+from .utils import log_exp, generate_context_mask, get_fold_data, get_fold_data_smacnp, get_fold_data_smacnp_era5pw
 
 
 def get_fold_holdout_indices(fold: int, n_folds: int, n_samples: int) -> tuple:
@@ -320,25 +320,54 @@ def train_elev(model,
                 print(f'Early stopping fold {fold} at epoch {epoch}: no improvement for {patience} epochs')
                 break
 
-def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None):
-    if context_fraction is not None:
-        xc_pool = task['x_context']       # (B, N_pool, D) — pool locations
-        yc_pool = task['y_context']       # (B, N_pool, 1) — context values (PW)
-        B, N, D = xc_pool.shape
-        if isinstance(context_fraction, (list, tuple)):
-            lo, hi = context_fraction
-            frac = lo + torch.rand(1).item() * (hi - lo)
-        else:
-            frac = context_fraction
-        n_ctx = max(1, int(frac * N))
-        perm  = torch.randperm(N, device=xc_pool.device)
-        xc = xc_pool[:, perm[:n_ctx], :]
-        yc = yc_pool[:, perm[:n_ctx], :]
-        xt = task['x_target']             # on-grid: same as xc_pool
-        yt = task['y_target']             # target values — PW or MS depending on notebook
+def train_batch_smacnp(task, opt, model, ll, device=None,
+                        context_fraction=None, npsplit_fraction=None):
+    if 'x_era5' in task:
+        # NP-split mode: randomly divide PW stations into context and target
+        x_era5 = task['x_era5']          # (B, 1769, 6)
+        y_era5 = task['y_era5']          # (B, 1769, 1)
+        x_pw   = task['x_pw']            # (B, N_pw, 6)
+        y_pw   = task['y_pw']            # (B, N_pw, 1)  NaN preserved
+
+        N_pw = x_pw.shape[1]
+        lo, hi = npsplit_fraction if isinstance(npsplit_fraction, (list, tuple)) else (0.5, 0.5)
+        frac   = lo + torch.rand(1).item() * (hi - lo)
+        n_ctx  = max(1, min(N_pw - 1, int(frac * N_pw)))
+        perm   = torch.randperm(N_pw)
+        ctx_idx, tgt_idx = perm[:n_ctx], perm[n_ctx:]
+
+        B = x_era5.shape[0]
+        era5_flag = torch.zeros(B, x_era5.shape[1], 1, device=x_era5.device)
+        pw_flag   = torch.ones(B, n_ctx, 1, device=x_pw.device)
+
+        x_pw_ctx = x_pw[:, ctx_idx, :]
+        y_pw_ctx = torch.nan_to_num(y_pw[:, ctx_idx, :], nan=0.0)
+
+        xc = torch.cat([torch.cat([x_era5, era5_flag], dim=-1),
+                         torch.cat([x_pw_ctx, pw_flag],  dim=-1)], dim=1)
+        yc = torch.cat([y_era5, y_pw_ctx], dim=1)
+        xt = x_pw[:, tgt_idx, :]          # (B, n_tgt, 6)
+        yt = y_pw[:, tgt_idx, 0]          # (B, n_tgt)  NaN preserved for masking
     else:
-        xc, yc = task['x_context'], task['y_context']
-        xt, yt = task['x_target'],  task['y_target']
+        if context_fraction is not None:
+            xc_pool = task['x_context']
+            yc_pool = task['y_context']
+            B, N, D = xc_pool.shape
+            if isinstance(context_fraction, (list, tuple)):
+                lo, hi = context_fraction
+                frac = lo + torch.rand(1).item() * (hi - lo)
+            else:
+                frac = context_fraction
+            n_ctx = max(1, int(frac * N))
+            perm  = torch.randperm(N, device=xc_pool.device)
+            xc = xc_pool[:, perm[:n_ctx], :]
+            yc = yc_pool[:, perm[:n_ctx], :]
+            xt = task['x_target']
+            yt = task['y_target']
+        else:
+            xc, yc = task['x_context'], task['y_context']
+            xt, yt = task['x_target'],  task['y_target']
+
     v     = model(xc, yc, xt)
     valid = ~torch.isnan(yt)
     if not valid.any():
@@ -352,12 +381,15 @@ def train_batch_smacnp(task, opt, model, ll, device=None, context_fraction=None)
 
 
 
-def train_epoch_smacnp(model, opt, training_data, ll, device=None, context_fraction=None):
+
+def train_epoch_smacnp(model, opt, training_data, ll, device=None,
+                        context_fraction=None, npsplit_fraction=None):
     model.train()
     batch_objs = []
     for task in training_data:
         obj, opt, model = train_batch_smacnp(task, opt, model, ll, device=device,
-                                              context_fraction=context_fraction)
+                                              context_fraction=context_fraction,
+                                              npsplit_fraction=npsplit_fraction)
         batch_objs.append(float(obj.item()))
     arr = np.array(batch_objs, dtype=float)
     arr = arr[~np.isnan(arr)]
@@ -369,14 +401,51 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
     model.eval()
     targets_list, preds_list = [], []
 
+    npsplit_mode = len(held_out) > 0 and 'x_era5' in held_out[0]
+
     with torch.no_grad():
         for task in held_out:
-            preds_list.append(model(task['x_context'],
-                                    task['y_context'],
-                                    task['x_target']))
-            targets_list.append(task['y_target'])
+            if npsplit_mode:
+                batch_lls, batch_maes = [], []
+                with torch.no_grad():
+                    for task in held_out:
+                        x_era5 = task['x_era5']
+                        y_era5 = task['y_era5']
+                        x_pw   = task['x_pw']
+                        y_pw   = task['y_pw']
+                        N_pw   = x_pw.shape[1]
+                        frac   = 0.2 + torch.rand(1).item() * 0.6
+                        n_ctx  = max(1, min(N_pw - 1, int(frac * N_pw)))
+                        perm   = torch.randperm(N_pw)
+                        ctx_idx, tgt_idx = perm[:n_ctx], perm[n_ctx:]
+                        B = x_era5.shape[0]
+                        era5_flag = torch.zeros(B, x_era5.shape[1], 1, device=x_era5.device)
+                        pw_flag   = torch.ones(B, n_ctx, 1, device=x_pw.device)
+                        x_pw_ctx = x_pw[:, ctx_idx, :]
+                        y_pw_ctx = torch.nan_to_num(y_pw[:, ctx_idx, :], nan=0.0)
+                        xc = torch.cat([torch.cat([x_era5, era5_flag], dim=-1),
+                                        torch.cat([x_pw_ctx, pw_flag],  dim=-1)], dim=1)
+                        yc = torch.cat([y_era5, y_pw_ctx], dim=1)
+                        xt = x_pw[:, tgt_idx, :]
+                        yt = y_pw[:, tgt_idx, 0]
+                        pred = model(xc, yc, xt)
+                        valid = ~torch.isnan(yt)
+                        if not valid.any():
+                            continue
+                        loss_val = -ll(yt[valid], pred[valid]) if not valid.all() else -ll(yt, pred)
+                        batch_lls.append(float(loss_val.item()))
+                        pred_vals = get_value(pred)
+                        batch_maes.append(float((pred_vals[valid] - yt[valid]).abs().mean().item()))
+                eval_ll = float(np.mean(batch_lls)) if batch_lls else float('nan')
+                med_mae = float(np.mean(batch_maes)) if batch_maes else float('nan')
+                return eval_ll, med_mae, float('nan'), float('nan')
+            else:
+                preds_list.append(model(task['x_context'],
+                                        task['y_context'],
+                                        task['x_target']))
+                targets_list.append(task['y_target'])
 
-    predictions     = torch.cat(preds_list)
+    predictions      = torch.cat(preds_list)
     targets_complete = torch.cat(targets_list)
 
     valid   = ~torch.isnan(targets_complete)
@@ -410,12 +479,14 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
             np.nanmedian(spearmans))
 
 
-def train_smacnp(model, opt, ll, x_context, y_context, x_target, y_target,
-                 output_dir, get_value, fold, n_folds,
+
+def train_smacnp(model, opt, ll, output_dir, get_value, fold, n_folds,
+                 x_context=None, y_context=None, x_target=None, y_target=None,
+                 x_era5=None, y_era5=None, x_pw=None, y_pw=None,
                  n_epochs=100, batch_size=16, patience=10,
                  stats_file=None, device=None,
-                 context_fraction=None,                       
-                 x_context_val=None, y_context_val=None,            
+                 context_fraction=None, npsplit_fraction=None,
+                 x_context_val=None, y_context_val=None,
                  x_target_val=None,  y_target_val=None):   
     """
     Top-level SMACNP training loop. Mirrors train_elev() in structure.
@@ -441,18 +512,26 @@ def train_smacnp(model, opt, ll, x_context, y_context, x_target, y_target,
         for epoch in range(n_epochs):
             epoch_start = time.time()
 
-            n_samples = x_context.shape[0]
-            start, end = get_fold_holdout_indices(fold, n_folds, n_samples)
-
-            training_data, held_out = get_fold_data_smacnp(
-                (start, end), x_context, y_context, x_target, y_target,
-                batch_size=batch_size,
-                x_context_val=x_context_val, y_context_val=y_context_val,
-                x_target_val=x_target_val,   y_target_val=y_target_val,
-            )
+            if x_era5 is not None:
+                n_samples = x_era5.shape[0]
+                start, end = get_fold_holdout_indices(fold, n_folds, n_samples)
+                training_data, held_out = get_fold_data_smacnp_era5pw(
+                    (start, end), x_era5, y_era5, x_pw, y_pw,
+                    batch_size=batch_size,
+                )
+            else:
+                n_samples = x_context.shape[0]
+                start, end = get_fold_holdout_indices(fold, n_folds, n_samples)
+                training_data, held_out = get_fold_data_smacnp(
+                    (start, end), x_context, y_context, x_target, y_target,
+                    batch_size=batch_size,
+                    x_context_val=x_context_val, y_context_val=y_context_val,
+                    x_target_val=x_target_val,   y_target_val=y_target_val,
+                )
 
             train_obj = train_epoch_smacnp(model, opt, training_data, ll, device=device,
-                                            context_fraction=context_fraction)
+                                            context_fraction=context_fraction,
+                                            npsplit_fraction=npsplit_fraction)
             test_obj, med_mae, med_pears, med_spear = eval_epoch_smacnp(
                 model, held_out, ll, get_value, device=device)
 
@@ -467,7 +546,7 @@ def train_smacnp(model, opt, ll, x_context, y_context, x_target, y_target,
                   f"est. remaining {remaining:.0f}s")
 
             writer.writerow([fold, med_mae, med_pears, med_spear,
-                             epoch, train_obj, test_obj.item()])
+                            epoch, train_obj, float(test_obj)])
             f.flush()
 
             if test_obj < best_obj:
