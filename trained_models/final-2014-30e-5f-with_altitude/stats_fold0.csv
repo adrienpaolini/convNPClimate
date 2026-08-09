@@ -1,0 +1,2 @@
+Fold,Mean absolute error,Pearson correlation,Spearman correlation,Epoch,train NLL,test NLL
+0,0.18290702253580093,0.9708705246448517,0.9701537470399374,0,0.17728217840194702,0.19228489696979523

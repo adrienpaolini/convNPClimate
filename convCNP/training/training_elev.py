@@ -83,8 +83,9 @@ def train_batch_elev(task, opt, model, ll, elev, dists, seasonal=None, device=No
     # Forward pass
     v = model(task['y_context'], mask, dists, elev, seasonal=batch_seasonal)
 
-    # Backprop
-    obj = -ll(task['y_target'], v)
+    # Backprop — move y_target to GPU here so train_target_ds can stay on CPU
+    y_target = task['y_target'].to(device) if device is not None else task['y_target']
+    obj = -ll(y_target, v)
     obj.backward()
     opt.step()
     opt.zero_grad()
@@ -108,28 +109,26 @@ def eval_epoch_elev(model, held_out, ll, elev, dists, y_target_t, get_value, dev
     """
     model.eval()
 
-    targets = [i['y_target'] for i in held_out]
-    targets_complete = torch.cat(targets, axis=0)
+    targets_list = [i['y_target'] for i in held_out]
+    targets_complete = torch.cat(targets_list, axis=0)
 
-    predictions = []
+    batch_lls = []
+    preds_cpu = []
     with torch.no_grad():
         for task in held_out:
             batch_size, channels, x, y = task['y_context'].shape
-
-            # Predict parameters for the batch
             mask = generate_context_mask(batch_size, channels, x, y, device=device)
-
-            # Get seasonal features from task if available
             batch_seasonal = task.get('seasonal', None)
+            y_context = task['y_context'].to(device)
+            y_target = task['y_target'].to(device) if task['y_target'].device.type == 'cpu' else task['y_target']
+            if batch_seasonal is not None:
+                batch_seasonal = batch_seasonal.to(device)
+            pred = model(y_context, mask, dists, elev, seasonal=batch_seasonal)
+            batch_lls.append(-ll(y_target, pred).item())
+            preds_cpu.append(get_value(pred).cpu())
 
-            predictions.append(model(task['y_context'], mask, dists, elev, seasonal=batch_seasonal))
-
-    # Calculate NLL
-    predictions = torch.cat(predictions)
-    eval_ll = -ll(targets_complete, predictions)
-
-    # Transform predicted parameters to amounts
-    predictions = get_value(predictions)
+    eval_ll = torch.tensor(sum(batch_lls) / len(batch_lls))
+    predictions = torch.cat(preds_cpu, dim=0)
 
     maes = np.zeros(predictions.shape[1])
     spearmans = np.zeros(predictions.shape[1])

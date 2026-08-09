@@ -17,10 +17,10 @@ class ParamLayer(nn.Module):
         self.init_ls.requires_grad = True
 
     def forward(self, wt, dists):
-        # Calculate rbf kernel
         kernel = torch.exp(-0.5 * dists / self.init_ls ** 2)
-        vals = torch.einsum('bij,pij->bpij', wt, kernel)
-        return torch.sum(vals, (2, 3))
+        b = wt.shape[0]
+        return wt.view(b, -1) @ kernel.view(kernel.shape[0], -1).T
+
 
 class FinalLayer(nn.Module):
     """

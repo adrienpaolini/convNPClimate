@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "test-2023-30e-5f-with_altitude",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "PERCENT",
+    "sparsity_value": 1.0,
+    "n_folds": 5,
+    "holdout_days": 365
+  },
+  "overall": {
+    "mae": 1.6294022798538208,
+    "rmse": 2.0770397186279297,
+    "bias": 0.2719813585281372,
+    "crps": 1.2285159738551064,
+    "skill_score": 0.5128406721828496
+  },
+  "correlations": {
+    "uncertainty_error": -0.16259955964580733,
+    "altitude_error": 0.026252529170724584,
+    "mtpi_error": -0.005752921517631227,
+    "doy_error": -0.1570257309835295
+  },
+  "calibration": {
+    "pit_mean": 0.47882998523008913,
+    "pit_std": 0.24453315353427568,
+    "z_std": 0.8225874900817871,
+    "coverage_50": 0.6435669100584269,
+    "coverage_90": 0.9464666166629623,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.09299690887968438,
+    "coverage_at_50": 0.638800743839311,
+    "coverage_at_90": 0.941572137576259,
+    "coverage_at_95": 0.9676045782124986
+  }
+}
