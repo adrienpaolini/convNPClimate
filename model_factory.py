@@ -64,7 +64,7 @@ def build_model(params: Params) -> tuple[nn.Module, LossFn, GetValueFn]:
             ls=params.LENGTH_SCALE,
             use_seasonal_in_mlp=params.SEASONAL_FEATURES_IN_MLP,
         )
-        loss_fn = gll
+        loss_fn = crps_gaussian if params.LOSS_FN == 'crps' else gll
         get_value_fn = get_value_tmax
 
     elif params.VARIABLE == "precip":

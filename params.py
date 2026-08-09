@@ -40,6 +40,9 @@ class Params:
     LR: float = 5e-4         # default in paper is 5e-4
     PATIENCE: int = 20       # default in paper is 10
 
+    # Loss function, either negative log-likelihood (gll) or crps
+    LOSS_FN: Literal['gll', 'crps'] = 'gll'
+
     # Cross-validation parameters
     N_FOLDS: int = 5         # default in paper is 5
 
@@ -90,6 +93,8 @@ class Params:
         assert self.TEMPERATURE_TYPE in ('max', 'mean'), f"Unknown TEMPERATURE_TYPE: {self.TEMPERATURE_TYPE}"
         assert (not (not self.SEASONAL_FEATURES and self.SEASONAL_FEATURES_IN_MLP),
                 "SEASONAL_FEATURES_IN_MLP cannot be True if SEASONAL_FEATURES (master switch) is False")
+        assert self.LOSS_FN in ('gll', 'crps'), f"Unknown LOSS_FN: {self.LOSS_FN}"
+
 
 
         import torch
