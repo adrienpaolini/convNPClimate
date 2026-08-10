@@ -321,7 +321,8 @@ def train_elev(model,
                 break
 
 def train_batch_smacnp(task, opt, model, ll, device=None,
-                        context_fraction=None, npsplit_fraction=None):
+                        context_fraction=None, npsplit_fraction=None,
+                        npsplit_inclusive=False):
     if 'x_era5' in task:
         # NP-split mode: randomly divide PW stations into context and target
         x_era5 = task['x_era5']          # (B, 1769, 6)
@@ -334,7 +335,8 @@ def train_batch_smacnp(task, opt, model, ll, device=None,
         frac   = lo + torch.rand(1).item() * (hi - lo)
         n_ctx  = max(1, min(N_pw - 1, int(frac * N_pw)))
         perm   = torch.randperm(N_pw)
-        ctx_idx, tgt_idx = perm[:n_ctx], perm[n_ctx:]
+        ctx_idx = perm[:n_ctx]
+        tgt_idx = torch.arange(N_pw) if npsplit_inclusive else perm[n_ctx:]
 
         B = x_era5.shape[0]
         if x_pw.shape[-1] != x_era5.shape[-1]:
@@ -388,21 +390,23 @@ def train_batch_smacnp(task, opt, model, ll, device=None,
 
 
 def train_epoch_smacnp(model, opt, training_data, ll, device=None,
-                        context_fraction=None, npsplit_fraction=None):
+                        context_fraction=None, npsplit_fraction=None,
+                        npsplit_inclusive=False):
     model.train()
     batch_objs = []
     for task in training_data:
         obj, opt, model = train_batch_smacnp(task, opt, model, ll, device=device,
                                               context_fraction=context_fraction,
-                                              npsplit_fraction=npsplit_fraction)
+                                              npsplit_fraction=npsplit_fraction,
+                                              npsplit_inclusive=npsplit_inclusive)
         batch_objs.append(float(obj.item()))
     arr = np.array(batch_objs, dtype=float)
     arr = arr[~np.isnan(arr)]
     return float(np.mean(arr[-5:])) if len(arr) > 0 else float('nan')
 
 
-def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
-    """Evaluate NLL and point metrics on the held-out fold."""
+def eval_epoch_smacnp(model, held_out, ll, get_value, device=None,
+                       npsplit_inclusive=False):
     model.eval()
     targets_list, preds_list = [], []
 
@@ -419,10 +423,11 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
                         x_pw   = task['x_pw']
                         y_pw   = task['y_pw']
                         N_pw   = x_pw.shape[1]
-                        frac   = 0.2 + torch.rand(1).item() * 0.6
-                        n_ctx  = max(1, min(N_pw - 1, int(frac * N_pw)))
-                        perm   = torch.randperm(N_pw)
-                        ctx_idx, tgt_idx = perm[:n_ctx], perm[n_ctx:]
+                        frac    = 0.2 + torch.rand(1).item() * 0.6
+                        n_ctx   = max(1, min(N_pw - 1, int(frac * N_pw)))
+                        perm    = torch.randperm(N_pw)
+                        ctx_idx = perm[:n_ctx]
+                        tgt_idx = torch.arange(N_pw) if npsplit_inclusive else perm[n_ctx:]
                         B = x_era5.shape[0]
                         if x_pw.shape[-1] != x_era5.shape[-1]:
                             n_extra = x_pw.shape[-1] - x_era5.shape[-1]
@@ -494,9 +499,10 @@ def train_smacnp(model, opt, ll, output_dir, get_value, fold, n_folds,
                  x_era5=None, y_era5=None, x_pw=None, y_pw=None,
                  n_epochs=100, batch_size=16, patience=10,
                  stats_file=None, device=None,
-                 context_fraction=None, npsplit_fraction=None,
+                 context_fraction=None,
                  x_context_val=None, y_context_val=None,
-                 x_target_val=None,  y_target_val=None):   
+                 x_target_val=None,  y_target_val=None,
+                 npsplit_fraction=None, npsplit_inclusive=False):   
     """
     Top-level SMACNP training loop. Mirrors train_elev() in structure.
 
@@ -540,9 +546,11 @@ def train_smacnp(model, opt, ll, output_dir, get_value, fold, n_folds,
 
             train_obj = train_epoch_smacnp(model, opt, training_data, ll, device=device,
                                             context_fraction=context_fraction,
-                                            npsplit_fraction=npsplit_fraction)
+                                            npsplit_fraction=npsplit_fraction,
+                                            npsplit_inclusive=npsplit_inclusive)
             test_obj, med_mae, med_pears, med_spear = eval_epoch_smacnp(
-                model, held_out, ll, get_value, device=device)
+                model, held_out, ll, get_value, device=device,
+                npsplit_inclusive=npsplit_inclusive)
 
             epoch_dur = time.time() - epoch_start
             epoch_durations.append(epoch_dur)
