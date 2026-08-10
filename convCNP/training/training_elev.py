@@ -337,6 +337,11 @@ def train_batch_smacnp(task, opt, model, ll, device=None,
         ctx_idx, tgt_idx = perm[:n_ctx], perm[n_ctx:]
 
         B = x_era5.shape[0]
+        if x_pw.shape[-1] != x_era5.shape[-1]:
+            n_extra = x_pw.shape[-1] - x_era5.shape[-1]
+            pad = torch.zeros(B, x_era5.shape[1], n_extra, device=x_era5.device)
+            x_era5 = torch.cat([x_era5, pad], dim=-1)
+
         era5_flag = torch.zeros(B, x_era5.shape[1], 1, device=x_era5.device)
         pw_flag   = torch.ones(B, n_ctx, 1, device=x_pw.device)
 
@@ -419,6 +424,10 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None):
                         perm   = torch.randperm(N_pw)
                         ctx_idx, tgt_idx = perm[:n_ctx], perm[n_ctx:]
                         B = x_era5.shape[0]
+                        if x_pw.shape[-1] != x_era5.shape[-1]:
+                            n_extra = x_pw.shape[-1] - x_era5.shape[-1]
+                            pad = torch.zeros(B, x_era5.shape[1], n_extra, device=x_era5.device)
+                            x_era5 = torch.cat([x_era5, pad], dim=-1)
                         era5_flag = torch.zeros(B, x_era5.shape[1], 1, device=x_era5.device)
                         pw_flag   = torch.ones(B, n_ctx, 1, device=x_pw.device)
                         x_pw_ctx = x_pw[:, ctx_idx, :]

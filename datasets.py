@@ -958,25 +958,20 @@ def build_smacnp_context(
     return x_context, y_context
 
 def build_combined_context(
-    era5_x: torch.Tensor,    # (T, N_era5, 6)
-    era5_y: torch.Tensor,    # (T, N_era5, 1)
-    pw_x:   torch.Tensor,    # (T, N_pw,   6)
-    pw_y:   torch.Tensor,    # (T, N_pw,   1)
+    era5_x: torch.Tensor,
+    era5_y: torch.Tensor,
+    pw_x:   torch.Tensor,
+    pw_y:   torch.Tensor,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """
-    Combine ERA5 grid and PW station context into a single point set.
-
-    Appends a source flag (0 = ERA5 reanalysis, 1 = PW station) as the 7th
-    feature of x_context so the model can learn source-specific attention weights.
-
-    Returns
-    -------
-    x_combined : (T, N_era5 + N_pw, 7)
-    y_combined : (T, N_era5 + N_pw, 1)
-    """
     T, N_era5, _ = era5_x.shape
     T_pw, N_pw, _ = pw_x.shape
     assert T == T_pw, f"ERA5 and PW time dims differ: {T} vs {T_pw}"
+
+    # Pad ERA5 with zeros if PW has extra features (e.g. elev_diff)
+    if pw_x.shape[-1] > era5_x.shape[-1]:
+        n_extra = pw_x.shape[-1] - era5_x.shape[-1]
+        pad = torch.zeros(T, N_era5, n_extra, device=era5_x.device)
+        era5_x = torch.cat([era5_x, pad], dim=-1)
 
     era5_flag = torch.zeros(T, N_era5, 1, device=era5_x.device)
     pw_flag   = torch.ones( T, N_pw,   1, device=pw_x.device)
@@ -1142,6 +1137,7 @@ def prepare_peakweather_targets(
     stations_meta: pd.DataFrame,
     hi_res_tpi: xr.DataArray,
     metadata: 'Era5Metadata',
+    era5_grid_elevation: xr.DataArray | None = None,
     device: torch.device | None = None,
 ) -> torch.Tensor:
     if device is None:
@@ -1165,12 +1161,24 @@ def prepare_peakweather_targets(
     tpi_vals = np.nan_to_num(tpi_vals, nan=0.0)
     mTPI_norm = (tpi_vals - (-200.0)) / 400.0
 
+    static_list = [lat_norm, lon_norm, alt_norm, mTPI_norm]
+
+    if era5_grid_elevation is not None:
+        era5_alt_at_stations = era5_grid_elevation.interp(
+            latitude=xr.DataArray(lats, dims='point'),
+            longitude=xr.DataArray(lons, dims='point'),
+            method='nearest',
+        ).values.astype(np.float32)
+        elev_diff_norm = (alts - era5_alt_at_stations) / 4500.0
+        static_list.append(elev_diff_norm)
+
     x_pw_static = torch.tensor(
-        np.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], axis=1),
+        np.stack(static_list, axis=1),
         dtype=torch.float32,
         device=device,
     )
     return x_pw_static
+
 
 
 
@@ -1200,6 +1208,7 @@ def build_pw_station_tensors(
     metadata: 'Era5Metadata',
     seasonal_features: torch.Tensor | None,
     dates_pd: pd.DatetimeIndex,
+    era5_grid_elevation: xr.DataArray | None = None,
     device: torch.device | None = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
@@ -1228,9 +1237,21 @@ def build_pw_station_tensors(
     tpi_vals = np.nan_to_num(tpi_vals, nan=0.0)
     mTPI_norm = (tpi_vals - (-200.0)) / 400.0
 
-    # Static attrs (M, 4)
-    static = np.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], axis=1)
-    static_t = torch.tensor(static, dtype=torch.float32)  # (M, 4)
+    # Static attrs (M, 4 or 5)
+    static_list = [lat_norm, lon_norm, alt_norm, mTPI_norm]
+
+    if era5_grid_elevation is not None:
+        era5_alt_at_stations = era5_grid_elevation.interp(
+            latitude=xr.DataArray(lats, dims='point'),
+            longitude=xr.DataArray(lons, dims='point'),
+            method='nearest',
+        ).values.astype(np.float32)
+        elev_diff = alts - era5_alt_at_stations          # metres
+        elev_diff_norm = elev_diff / 4500.0              # same scale as alt_norm
+        static_list.append(elev_diff_norm)
+
+    static = np.stack(static_list, axis=1)
+    static_t = torch.tensor(static, dtype=torch.float32)
 
     T = len(dates_pd)
     M = len(station_ids)
