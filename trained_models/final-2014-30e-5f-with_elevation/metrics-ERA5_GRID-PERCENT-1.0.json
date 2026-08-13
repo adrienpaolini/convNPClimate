@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-with_elevation",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "PERCENT",
+    "sparsity_value": 1.0,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 1.2900724411010742,
+    "rmse": 1.691464900970459,
+    "bias": -0.04972681775689125,
+    "crps": 0.9314868874012673,
+    "skill_score": 0.6330258249979632
+  },
+  "correlations": {
+    "uncertainty_error": 0.7285631749497392,
+    "altitude_error": 0.19009232155989725,
+    "mtpi_error": -0.00039618992471094266,
+    "doy_error": 0.01699999949661494
+  },
+  "calibration": {
+    "pit_mean": 0.5074115102861821,
+    "pit_std": 0.2696112271847939,
+    "z_std": 0.9431396722793579,
+    "coverage_50": 0.5649557021465091,
+    "coverage_90": 0.9205755436349072,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.04188381227684437,
+    "coverage_at_50": 0.5600546897239511,
+    "coverage_at_90": 0.9141049777962126,
+    "coverage_at_95": 0.9493171890516738
+  }
+}
