@@ -1,0 +1,37 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-with_elevation-crps",
+    "input_data": "ERA5_GRID",
+    "sparsity_type": "PERCENT",
+    "sparsity_value": 1.0,
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 1.2979748249053955,
+    "rmse": 1.7131510972976685,
+    "bias": 0.001951156766153872,
+    "crps": 0.937109799780516,
+    "skill_score": 0.6308105886276044
+  },
+  "correlations": {
+    "uncertainty_error": 0.7272203585574251,
+    "altitude_error": 0.2378878782432405,
+    "mtpi_error": 0.003977996547134255,
+    "doy_error": 0.039661310259574215
+  },
+  "calibration": {
+    "pit_mean": 0.5040039118849344,
+    "pit_std": 0.28219254425597384,
+    "z_std": 1.0391900539398193,
+    "coverage_50": 0.53106783602034,
+    "coverage_90": 0.8967774276335462,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.01917154013607209,
+    "coverage_at_50": 0.526297082441047,
+    "coverage_at_90": 0.8894601851748087,
+    "coverage_at_95": 0.9300994907010519
+  }
+}
