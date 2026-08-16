@@ -1,0 +1,35 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-smacnp-mean-nll",
+    "model_type": "smacnp",
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 0.8244073987007141,
+    "rmse": 1.082166314125061,
+    "bias": 0.04142812266945839,
+    "crps": 0.5920876374407088,
+    "skill_score": 0.7227020855368439
+  },
+  "correlations": {
+    "uncertainty_error": 0.901439144359625,
+    "altitude_error": 0.6794257346043768,
+    "mtpi_error": 0.03339544853500519,
+    "doy_error": 0.008761336166200189
+  },
+  "calibration": {
+    "pit_mean": 0.48569038765327677,
+    "pit_std": 0.2749430598239728,
+    "z_std": 0.9609074592590332,
+    "coverage_50": 0.5461753356708966,
+    "coverage_90": 0.9149329806997938,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.029779465893728728,
+    "coverage_at_50": 0.5413143433789097,
+    "coverage_at_90": 0.9077210929345269,
+    "coverage_at_95": 0.9471271653598504
+  }
+}

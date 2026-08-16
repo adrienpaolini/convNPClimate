@@ -132,7 +132,8 @@ def build_smacnp(params: Params, input_dim: int, context_input_dim: int = None) 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Built SMACNP with {n_params:,} trainable parameters")
 
-    return model, crps_gaussian, get_value_tmax
+    loss_fn = crps_gaussian if params.LOSS_FN == 'crps' else gll
+    return model, loss_fn, get_value_tmax
 
 def load_model_checkpoint(checkpoint_path, p, device, input_dim=None, context_input_dim=None):
     if p.MODEL_TYPE == 'smacnp':
