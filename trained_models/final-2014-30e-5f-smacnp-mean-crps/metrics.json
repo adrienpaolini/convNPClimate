@@ -1,0 +1,35 @@
+{
+  "config": {
+    "model_name": "final-2014-30e-5f-smacnp-mean-crps",
+    "model_type": "smacnp",
+    "n_folds": 5,
+    "holdout_days": 3652
+  },
+  "overall": {
+    "mae": 0.81636643409729,
+    "rmse": 1.073770523071289,
+    "bias": -0.013146262615919113,
+    "crps": 0.5865665361099472,
+    "skill_score": 0.7252878343141325
+  },
+  "correlations": {
+    "uncertainty_error": 0.8884725597628249,
+    "altitude_error": 0.6388576032838689,
+    "mtpi_error": 0.0385992753868938,
+    "doy_error": -0.033966139652583785
+  },
+  "calibration": {
+    "pit_mean": 0.5011282963972251,
+    "pit_std": 0.2811523751077482,
+    "z_std": 1.0069090127944946,
+    "coverage_50": 0.5310244515729927,
+    "coverage_90": 0.902745327034332,
+    "ks_p_value": 0.0
+  },
+  "reliability": {
+    "mace": 0.01911118648086944,
+    "coverage_at_50": 0.5262504626228626,
+    "coverage_at_90": 0.8951168090784694,
+    "coverage_at_95": 0.9373656295396297
+  }
+}
