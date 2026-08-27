@@ -74,6 +74,10 @@ class Params:
     NUM_LAYERS_MLP: int = 1  
     USE_PE:  bool  = True   # sinusoidal positional encoding
     PE_DIM:  int   = 32     # positional encoding output dimension
+    DROPOUT_RATE: float = 0.0
+    LAPLACE_P:    float = 1.0
+    USE_LAYER_NORM: bool = True
+
 
 
     PW_TRAIN_FRAC: float = 0.6

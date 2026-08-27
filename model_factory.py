@@ -123,10 +123,12 @@ def build_smacnp(params: Params, input_dim: int, context_input_dim: int = None) 
         hidden_size=params.SMACNP_HIDDEN,       
         num_heads=params.N_HEADS,
         num_layers_mlp=params.NUM_LAYERS_MLP,               
-        dropout_rate=0.0,                       
+        dropout_rate=params.DROPOUT_RATE,
+        laplace_distance_p=params.LAPLACE_P,                       
         spatial_indices=[0, 1],                 
         use_positional_encoding=params.USE_PE,  
         pe_dim=params.PE_DIM,
+        use_layer_norm=params.USE_LAYER_NORM,
     )
 
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
