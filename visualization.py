@@ -1403,17 +1403,22 @@ def plot_station_skill_map(
     global_skill: float,
     title: str,
     skill_range: tuple[float, float] = (-0.5, 1.0),
+    swiss_border_lons_2d: np.ndarray | None = None,
+    swiss_border_lats_2d: np.ndarray | None = None,
+    swiss_border_valid: np.ndarray | None = None,
     save_path=None,
 ) -> plt.Figure:
-    """
-    Scatter map of per-station skill scores over Switzerland.
-    Skill = 1 - (CRPS_model / CRPS_baseline).
-    """
     fig, ax = plt.subplots(figsize=(8, 5))
+
+    if swiss_border_lons_2d is not None:
+        ax.contourf(swiss_border_lons_2d, swiss_border_lats_2d, swiss_border_valid,
+                    levels=[0.5, 1.5], colors=['#cccccc'], alpha=0.3, zorder=1)
+        ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_border_valid,
+                levels=[0.5], colors='#555555', linewidths=0.9, zorder=2)
     sc = ax.scatter(
         station_lons, station_lats, c=skill_per_station,
         cmap='RdYlGn', vmin=skill_range[0], vmax=skill_range[1],
-        s=60, edgecolors='k', linewidths=0.3,
+        s=60, edgecolors='k', linewidths=0.3, zorder=3,
     )
     plt.colorbar(sc, ax=ax, label='Skill score')
     valid = skill_per_station[~np.isnan(skill_per_station)]
@@ -1424,10 +1429,14 @@ def plot_station_skill_map(
             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
     ax.set_xlabel('Longitude')
     ax.set_ylabel('Latitude')
+    ax.set_facecolor('white')
+    center_lat = (station_lats.min() + station_lats.max()) / 2
+    ax.set_aspect(1.0 / np.cos(np.radians(center_lat)))
     fig.suptitle(title, fontsize=13, fontweight='bold')
     plt.tight_layout()
     _save_fig(fig, save_path)
     return fig
+
 
 
 def load_attention_context(
