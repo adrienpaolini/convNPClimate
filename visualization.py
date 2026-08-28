@@ -12,6 +12,10 @@ from matplotlib.ticker import FixedFormatter, FixedLocator, NullFormatter
 from scipy.ndimage import zoom
 from scipy.interpolate import RegularGridInterpolator
 
+import glob
+import xarray as xr
+import params as params_module
+import model_factory
 
 import datasets as ds
 
@@ -1095,6 +1099,9 @@ def plot_attention_maps(
     save_path: str | Path | None = None,
     viz_grid_lats_1d: np.ndarray | None = None,
     viz_grid_lons_1d: np.ndarray | None = None,
+    swiss_border_lons_2d: np.ndarray | None = None,
+    swiss_border_lats_2d: np.ndarray | None = None,
+    swiss_valid_2d: np.ndarray | None = None,
 ) -> plt.Figure:
     """
     Plot Laplace, mean-attribute, and variance attention weights for one target point.
@@ -1173,13 +1180,23 @@ def plot_attention_maps(
         _vlo, _vla = np.meshgrid(viz_grid_lons_1d, viz_grid_lats_1d)
         _viz_lats_flat = _vla.ravel()
         _viz_lons_flat = _vlo.ravel()
-        swiss_mask = np.ones((N, E), dtype=bool)
+        if swiss_valid_2d is not None and swiss_border_lons_2d is not None:
+            from scipy.interpolate import griddata
+            swiss_mask = griddata(
+                np.column_stack([swiss_border_lons_2d.ravel(), swiss_border_lats_2d.ravel()]),
+                swiss_valid_2d.ravel().astype(float),
+                np.column_stack([_viz_lons_flat, _viz_lats_flat]),
+                method='nearest', fill_value=0.0,
+            ).reshape(N, E) > 0.5
+        else:
+            swiss_mask = np.ones((N, E), dtype=bool)
     else:
         N, E = grid_shape
         _viz_lats_flat = target_lats
         _viz_lons_flat = target_lons
         swiss_mask = ~np.isnan(y_target_flat.reshape(N, E)) if y_target_flat is not None \
                     else np.ones((N, E), dtype=bool)
+
 
     mch_extent = [_viz_lons_flat.min(), _viz_lons_flat.max(),
                 _viz_lats_flat.min(), _viz_lats_flat.max()]
@@ -1188,13 +1205,13 @@ def plot_attention_maps(
 
 
     # Attribute similarity maps (MeteoSwiss grid, no interpolation needed)
-    all_alt  = x_target_static[:, 2].cpu().numpy()   # (M,) alt_norm
-    all_mTPI = x_target_static[:, 3].cpu().numpy()   # (M,) mTPI_norm
-    tgt_alt  = all_alt[target_point_idx]
-    tgt_mTPI = all_mTPI[target_point_idx]
+    ctx_alt  = x_context[0, :, 2].cpu().numpy()
+    ctx_mTPI = x_context[0, :, 3].cpu().numpy()
+    tgt_alt  = x_target_static[target_point_idx, 2].item()
+    tgt_mTPI = x_target_static[target_point_idx, 3].item()
 
-    alt_dist  = np.abs(all_alt  - tgt_alt)
-    mTPI_dist = np.abs(all_mTPI - tgt_mTPI)
+    alt_dist  = np.abs(ctx_alt  - tgt_alt)
+    mTPI_dist = np.abs(ctx_mTPI - tgt_mTPI)
     comb_dist = np.sqrt(alt_dist**2 + mTPI_dist**2)
 
     alt_sim  = 1 - alt_dist  / (alt_dist.max()  + 1e-8)
@@ -1241,32 +1258,69 @@ def plot_attention_maps(
     def _plot_row(axes_row, weights, row_label):
         titles = ['Laplace (spatial)', 'Mean-attribute', 'Variance']
         for ax, w, title in zip(axes_row, weights, titles):
-            im = ax.imshow(_prepare(w), cmap='YlOrRd', origin='lower', vmin=0,
-                           extent=mch_extent, aspect=geo_aspect)
+            if context_is_regular:
+                im = ax.imshow(_prepare(w), cmap='YlOrRd', origin='lower', vmin=0,
+                               extent=mch_extent, aspect=geo_aspect)
+                plt.colorbar(im, ax=ax, label='Attention weight')
+                if swiss_border_lons_2d is not None:
+                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=4)
+            else:
+                if swiss_border_lons_2d is not None:
+                    ax.pcolormesh(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                                  cmap='Greys', vmin=0, vmax=2, alpha=0.15,
+                                  shading='auto', zorder=1)
+                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=2)
+                sc = ax.scatter(context_lons, context_lats, c=w, cmap='YlOrRd',
+                                vmin=0, s=50, zorder=3, edgecolors='k', linewidths=0.3)
+                plt.colorbar(sc, ax=ax, label='Attention weight')
+                ax.set_xlim(mch_extent[0], mch_extent[1])
+                ax.set_ylim(mch_extent[2], mch_extent[3])
+                ax.set_aspect(geo_aspect)
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
                        zorder=5, label='Target point')
-            plt.colorbar(im, ax=ax, label='Attention weight')
             ax.set_title(f'{title}\n{row_label}')
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
             ax.legend()
+            ax.set_facecolor('white')
 
     def _plot_similarity_row(axes_row):
-        panels = [
-            (_to_sim_grid(alt_sim),  'Altitude similarity'),
-            (_to_sim_grid(mTPI_sim), 'mTPI similarity'),
-            (_to_sim_grid(comb_sim), 'Combined attribute similarity\n(altitude + mTPI)'),
+        sim_data = [
+            (alt_sim,  'Altitude similarity'),
+            (mTPI_sim, 'mTPI similarity'),
+            (comb_sim, 'Combined attribute similarity\n(altitude + mTPI)'),
         ]
-        for ax, (grid, title) in zip(axes_row, panels):
-            im = ax.imshow(grid, cmap='RdYlGn', origin='lower', vmin=0, vmax=1,
-                        extent=mch_extent, aspect=geo_aspect)
+        for ax, (raw, title) in zip(axes_row, sim_data):
+            if context_is_regular:
+                im = ax.imshow(_to_sim_grid(raw), cmap='RdYlGn', origin='lower', vmin=0, vmax=1,
+                               extent=mch_extent, aspect=geo_aspect)
+                plt.colorbar(im, ax=ax, label='Similarity (1 = identical)')
+                if swiss_border_lons_2d is not None:
+                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=4)
+            else:
+                if swiss_border_lons_2d is not None:
+                    ax.pcolormesh(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                                  cmap='Greys', vmin=0, vmax=2, alpha=0.15,
+                                  shading='auto', zorder=1)
+                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=2)
+                sc = ax.scatter(context_lons, context_lats, c=raw, cmap='RdYlGn',
+                                vmin=0, vmax=1, s=50, zorder=3,
+                                edgecolors='k', linewidths=0.3)
+                plt.colorbar(sc, ax=ax, label='Similarity (1 = identical)')
+                ax.set_xlim(mch_extent[0], mch_extent[1])
+                ax.set_ylim(mch_extent[2], mch_extent[3])
+                ax.set_aspect(geo_aspect)
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
-                    zorder=5, label='Target point')
-            plt.colorbar(im, ax=ax, label='Similarity (1 = identical)')
+                       zorder=5, label='Target point')
             ax.set_title(title)
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
             ax.legend()
+            ax.set_facecolor('white')
 
 
     n_rows = (2 if show_average else 1) + (1 if show_similarity else 0)
@@ -1374,3 +1428,147 @@ def plot_station_skill_map(
     plt.tight_layout()
     _save_fig(fig, save_path)
     return fig
+
+
+def load_attention_context(
+    model_name: str,
+    fold: int = 4,
+    pw_first_date: str = '2017-01-01',
+    pw_last_date: str = '2024-12-31',
+    pw_validity_threshold: float = 0.99,
+    station_split_seed: int = 42,
+    exclude_stations: list | None = None,
+    trained_models_dir: str = './trained_models',
+) -> dict:
+    """Load model, tensors, and Switzerland border for attention visualization.
+
+    Returns a dict consumed by plot_attention(). Call once and reuse across
+    multiple plot_attention() calls (different locations / days).
+    """
+    if exclude_stations is None:
+        exclude_stations = []
+
+    model_dir = Path(trained_models_dir) / model_name
+    params_module.configure_renku_cuda()
+    device   = params_module.select_device()
+    params   = params_module.Params.load_json(model_dir / 'params.json')
+    metadata = ds.load_metadata_json(model_dir / 'metadata.json')
+    topo_path = params.HI_RES_TOPOGRAPHY_ZARR_PATH or './datasets/topo_subset.zarr'
+
+    daily_tmean, stations_meta, valid_stations = ds.load_peakweather_stations(
+        first_date=pw_first_date, last_date=pw_last_date,
+        validity_threshold=pw_validity_threshold, aggregation_method='mean',
+    )
+    pw_dates_pd = pd.DatetimeIndex(daily_tmean.index.date.astype(str))
+
+    valid_stations = [s for s in valid_stations if s not in exclude_stations]
+    daily_tmean    = daily_tmean[valid_stations]
+    stations_meta  = stations_meta.loc[valid_stations]
+
+    train_stations, _, test_stations = ds.split_peakweather_stations(
+        valid_stations, train_frac=params.PW_TRAIN_FRAC,
+        val_frac=params.PW_VAL_FRAC, seed=station_split_seed,
+    )
+
+    pw_times_np = np.array(pw_dates_pd, dtype='datetime64[D]')
+    seasonal_features = ds.compute_seasonal_features(pw_times_np, device=device) \
+                        if params.SEASONAL_FEATURES else None
+    _, hi_res_tpi = ds.load_high_res_topography(topo_path)
+
+    x_context, y_context = ds.build_pw_station_tensors(
+        daily_tmax=daily_tmean, station_ids=train_stations,
+        stations_meta=stations_meta, hi_res_tpi=hi_res_tpi,
+        metadata=metadata, seasonal_features=seasonal_features,
+        dates_pd=pw_dates_pd, device=device,
+    )
+    y_context = torch.nan_to_num(y_context.unsqueeze(-1), nan=0.0)
+
+    x_target_static = ds.prepare_peakweather_targets(
+        stations_meta=stations_meta.loc[test_stations],
+        hi_res_tpi=hi_res_tpi, metadata=metadata, device=device,
+    )
+
+    model, epoch = model_factory.load_model_checkpoint(
+        model_dir / f'model_fold_{fold}', params, device,
+        input_dim=x_context.shape[-1],
+    )
+    print(f"Loaded {model_name} — fold {fold}, epoch {epoch}")
+
+    ms_glob  = params.METEO_SWISS_MEAN_TEMP_GLOB or \
+               './datasets/MeteoSwiss/TabsD_v2.0_swiss.lv95/*.nc'
+    ms_file  = sorted(glob.glob(ms_glob))[0]
+    ms_ds    = xr.open_dataset(ms_file)
+    var      = 'TabsD' if 'TabsD' in ms_ds else list(ms_ds.data_vars)[0]
+    ms_slice = ms_ds[var].isel(time=0).values
+    ms_E     = ms_ds['E'].values if 'E' in ms_ds.coords else ms_ds['x'].values
+    ms_N     = ms_ds['N'].values if 'N' in ms_ds.coords else ms_ds['y'].values
+    ms_ds.close()
+    border_valid     = (~np.isnan(ms_slice)).astype(float)
+    E_2d, N_2d       = np.meshgrid(ms_E, ms_N)
+    border_lons, border_lats = ds.lv95_to_wgs84(E_2d, N_2d)
+
+    return dict(
+        model=model,
+        x_context=x_context,
+        y_context=y_context,
+        x_target_static=x_target_static,
+        metadata=metadata,
+        device=device,
+        border_lons=border_lons,
+        border_lats=border_lats,
+        border_valid=border_valid,
+        test_stations=test_stations,
+        stations_meta=stations_meta, 
+    )
+
+def plot_attention(
+    context: dict,
+    location: tuple,          # (lat, lon) in degrees
+    day_idx: int = 200,
+    show_average: bool = True,
+    show_similarity: bool = True,
+    grid_shape: tuple = (240, 370),
+    save_path=None,
+) -> plt.Figure:
+    """Plot SMACNP attention maps for a chosen location and day.
+
+    Args:
+        context:         Dict returned by load_attention_context().
+        location:        (lat, lon) tuple in degrees.
+        day_idx:         Time index to visualize (first row of the plot).
+        show_average:    Add a second row averaged over all days.
+        show_similarity: Add a row with attribute similarity maps.
+        grid_shape:      (N_lat, N_lon) of the visualization grid.
+        save_path:       Optional path to save the figure.
+    """
+    lat, lon = location
+
+    metadata        = context['metadata']
+    x_context       = context['x_context']
+    x_target_static = context['x_target_static']
+
+    _, _, target_lats, target_lons = get_lat_lon_arrays(x_context, x_target_static, metadata)
+    idx, mlat, mlon, dkm = find_target_point(lat, lon, target_lats, target_lons)
+    print(f"({lat:.3f}°N, {lon:.3f}°E): idx={idx}, matched ({mlat:.4f}°N, {mlon:.4f}°E), {dkm:.2f} km")
+
+    N, E = grid_shape
+    return plot_attention_maps(
+        model=context['model'],
+        x_context=x_context,
+        y_context=context['y_context'],
+        x_target_static=x_target_static,
+        day_idx=day_idx,
+        target_point_idx=idx,
+        grid_shape=grid_shape,
+        metadata=metadata,
+        device=context['device'],
+        y_target_flat=None,
+        show_average=show_average,
+        show_similarity=show_similarity,
+        viz_grid_lats_1d=np.linspace(metadata.lat_min, metadata.lat_max, N),
+        viz_grid_lons_1d=np.linspace(metadata.lon_min, metadata.lon_max, E),
+        swiss_border_lons_2d=context['border_lons'],
+        swiss_border_lats_2d=context['border_lats'],
+        swiss_valid_2d=context['border_valid'],
+        save_path=save_path,
+    )
