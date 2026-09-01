@@ -1294,7 +1294,7 @@ def plot_attention_maps(
         ]
         for ax, (raw, title) in zip(axes_row, sim_data):
             if context_is_regular:
-                im = ax.imshow(_to_sim_grid(raw), cmap='RdYlGn', origin='lower', vmin=0, vmax=1,
+                im = ax.imshow(_to_sim_grid(raw), cmap='YlOrRd', origin='lower', vmin=0, vmax=1,
                                extent=mch_extent, aspect=geo_aspect)
                 plt.colorbar(im, ax=ax, label='Similarity (1 = identical)')
                 if swiss_border_lons_2d is not None:
@@ -1307,7 +1307,7 @@ def plot_attention_maps(
                                   shading='auto', zorder=1)
                     ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
                                levels=[0.5], colors='#555555', linewidths=0.9, zorder=2)
-                sc = ax.scatter(context_lons, context_lats, c=raw, cmap='RdYlGn',
+                sc = ax.scatter(context_lons, context_lats, c=raw, cmap='YlOrRd',
                                 vmin=0, vmax=1, s=50, zorder=3,
                                 edgecolors='k', linewidths=0.3)
                 plt.colorbar(sc, ax=ax, label='Similarity (1 = identical)')
@@ -1581,3 +1581,59 @@ def plot_attention(
         swiss_valid_2d=context['border_valid'],
         save_path=save_path,
     )
+
+def plot_predicted_vs_observed(
+    all_preds: np.ndarray,
+    all_truths: np.ndarray,
+    title: str = 'SMACNP',
+    bins: int = 200,
+    save_path=None,
+) -> plt.Figure:
+    """
+    Density scatter plot of predicted vs observed temperature.
+
+    Args:
+        all_preds:  (T, M) predicted means in °C.
+        all_truths: (T, M) observed temperatures in °C.
+        title:      Figure title.
+        bins:       Number of bins for 2D histogram density estimate.
+        save_path:  Optional path to save the figure.
+    """
+    x = all_truths.ravel()
+    y = all_preds.ravel()
+    mask = ~(np.isnan(x) | np.isnan(y))
+    x, y = x[mask], y[mask]
+
+    mae  = np.mean(np.abs(y - x))
+    rmse = np.sqrt(np.mean((y - x) ** 2))
+    corr = np.corrcoef(x, y)[0, 1]
+
+    counts, xedges, yedges = np.histogram2d(x, y, bins=bins)
+    xi = np.clip(np.searchsorted(xedges[1:-1], x), 0, counts.shape[0] - 1)
+    yi = np.clip(np.searchsorted(yedges[1:-1], y), 0, counts.shape[1] - 1)
+    density = counts[xi, yi]
+
+    order = density.argsort()
+    x, y, density = x[order], y[order], density[order]
+
+    fig, ax = plt.subplots(figsize=(6, 6))
+    sc = ax.scatter(x, y, c=density, cmap='viridis', s=1, alpha=0.6, rasterized=True)
+    plt.colorbar(sc, ax=ax, label='Density of Points')
+
+    lim = [min(x.min(), y.min()) - 1, max(x.max(), y.max()) + 1]
+    ax.plot(lim, lim, 'r--', linewidth=1.2)
+    ax.set_xlim(lim)
+    ax.set_ylim(lim)
+    ax.set_aspect('equal')
+
+    ax.text(0.05, 0.95,
+            f'MAE: {mae:.3f}\nRMSE: {rmse:.3f}\nCorr: {corr:.3f}',
+            transform=ax.transAxes, verticalalignment='top', fontsize=10,
+            bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+
+    ax.set_xlabel('Observed temperature [°C]')
+    ax.set_ylabel('Predicted temperature [°C]')
+    ax.set_title(title)
+    plt.tight_layout()
+    _save_fig(fig, save_path)
+    return fig
