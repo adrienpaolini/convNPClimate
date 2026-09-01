@@ -1102,6 +1102,7 @@ def plot_attention_maps(
     swiss_border_lons_2d: np.ndarray | None = None,
     swiss_border_lats_2d: np.ndarray | None = None,
     swiss_valid_2d: np.ndarray | None = None,
+    target_label: str = 'Target point',
 ) -> plt.Figure:
     """
     Plot Laplace, mean-attribute, and variance attention weights for one target point.
@@ -1261,7 +1262,7 @@ def plot_attention_maps(
             if context_is_regular:
                 im = ax.imshow(_prepare(w), cmap='YlOrRd', origin='lower', vmin=0,
                                extent=mch_extent, aspect=geo_aspect)
-                plt.colorbar(im, ax=ax, label='Attention weight')
+                plt.colorbar(im, ax=ax, label='Attention weight',  shrink=0.6, fraction=0.05)
                 if swiss_border_lons_2d is not None:
                     ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
                                levels=[0.5], colors='#555555', linewidths=0.9, zorder=4)
@@ -1274,12 +1275,13 @@ def plot_attention_maps(
                                levels=[0.5], colors='#555555', linewidths=0.9, zorder=2)
                 sc = ax.scatter(context_lons, context_lats, c=w, cmap='YlOrRd',
                                 vmin=0, s=50, zorder=3, edgecolors='k', linewidths=0.3)
-                plt.colorbar(sc, ax=ax, label='Attention weight')
+                plt.colorbar(sc, ax=ax, label='Attention weight',  shrink=0.6, fraction=0.05)
                 ax.set_xlim(mch_extent[0], mch_extent[1])
                 ax.set_ylim(mch_extent[2], mch_extent[3])
                 ax.set_aspect(geo_aspect)
+                ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
-                       zorder=5, label='Target point')
+                       zorder=5, label=target_label)
             ax.set_title(f'{title}\n{row_label}')
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
@@ -1296,7 +1298,7 @@ def plot_attention_maps(
             if context_is_regular:
                 im = ax.imshow(_to_sim_grid(raw), cmap='YlOrRd', origin='lower', vmin=0, vmax=1,
                                extent=mch_extent, aspect=geo_aspect)
-                plt.colorbar(im, ax=ax, label='Similarity (1 = identical)')
+                plt.colorbar(im, ax=ax, label='Similarity (1 = identical)', shrink=0.6, fraction=0.05)
                 if swiss_border_lons_2d is not None:
                     ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
                                levels=[0.5], colors='#555555', linewidths=0.9, zorder=4)
@@ -1310,12 +1312,13 @@ def plot_attention_maps(
                 sc = ax.scatter(context_lons, context_lats, c=raw, cmap='YlOrRd',
                                 vmin=0, vmax=1, s=50, zorder=3,
                                 edgecolors='k', linewidths=0.3)
-                plt.colorbar(sc, ax=ax, label='Similarity (1 = identical)')
+                plt.colorbar(sc, ax=ax, label='Similarity (1 = identical)',  shrink=0.6, fraction=0.05)
                 ax.set_xlim(mch_extent[0], mch_extent[1])
                 ax.set_ylim(mch_extent[2], mch_extent[3])
                 ax.set_aspect(geo_aspect)
+                ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
-                       zorder=5, label='Target point')
+                       zorder=5, label=target_label)
             ax.set_title(title)
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
@@ -1560,6 +1563,10 @@ def plot_attention(
     idx, mlat, mlon, dkm = find_target_point(lat, lon, target_lats, target_lons)
     print(f"({lat:.3f}°N, {lon:.3f}°E): idx={idx}, matched ({mlat:.4f}°N, {mlon:.4f}°E), {dkm:.2f} km")
 
+    station_code = context['test_stations'][idx]
+    station_name = context['stations_meta'].loc[station_code, 'station_name']
+    target_label = f"{station_name} ({station_code})"
+
     N, E = grid_shape
     return plot_attention_maps(
         model=context['model'],
@@ -1574,11 +1581,12 @@ def plot_attention(
         y_target_flat=None,
         show_average=show_average,
         show_similarity=show_similarity,
-        viz_grid_lats_1d=np.linspace(metadata.lat_min, metadata.lat_max, N),
-        viz_grid_lons_1d=np.linspace(metadata.lon_min, metadata.lon_max, E),
+        viz_grid_lats_1d=np.linspace(context['border_lats'].min(), context['border_lats'].max(), N),
+        viz_grid_lons_1d=np.linspace(context['border_lons'].min(), context['border_lons'].max(), E),
         swiss_border_lons_2d=context['border_lons'],
         swiss_border_lats_2d=context['border_lats'],
         swiss_valid_2d=context['border_valid'],
+        target_label=target_label,
         save_path=save_path,
     )
 
