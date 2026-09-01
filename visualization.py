@@ -1604,9 +1604,15 @@ def plot_predicted_vs_observed(
     mask = ~(np.isnan(x) | np.isnan(y))
     x, y = x[mask], y[mask]
 
-    mae  = np.mean(np.abs(y - x))
-    rmse = np.sqrt(np.mean((y - x) ** 2))
+    mae_per_station  = np.array([np.nanmean(np.abs(all_preds[:, s] - all_truths[:, s]))
+                                for s in range(all_preds.shape[1])])
+    rmse_per_station = np.array([np.sqrt(np.nanmean((all_preds[:, s] - all_truths[:, s])**2))
+                                for s in range(all_preds.shape[1])])
+
+    mae  = np.nanmean(mae_per_station)
+    rmse = np.nanmean(rmse_per_station)
     corr = np.corrcoef(x, y)[0, 1]
+
 
     counts, xedges, yedges = np.histogram2d(x, y, bins=bins)
     xi = np.clip(np.searchsorted(xedges[1:-1], x), 0, counts.shape[0] - 1)
@@ -1618,7 +1624,7 @@ def plot_predicted_vs_observed(
 
     fig, ax = plt.subplots(figsize=(6, 6))
     sc = ax.scatter(x, y, c=density, cmap='viridis', s=1, alpha=0.6, rasterized=True)
-    plt.colorbar(sc, ax=ax, label='Density of Points')
+    plt.colorbar(sc, ax=ax, label='Density of Points', shrink=0.6, fraction=0.05)
 
     lim = [min(x.min(), y.min()) - 1, max(x.max(), y.max()) + 1]
     ax.plot(lim, lim, 'r--', linewidth=1.2)
