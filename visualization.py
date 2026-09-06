@@ -1024,6 +1024,7 @@ def _plot_training_curves_single(
     ax.grid(True, linestyle='--', alpha=0.7)
     ax.legend(title='Metric', loc='upper right')
 
+    axes[1].set_ylim(top=0.4)
     plt.tight_layout()
     _save_fig(fig, save_path)
     plt.show()
