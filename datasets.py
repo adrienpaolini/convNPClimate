@@ -371,6 +371,7 @@ def prepare_meteoswiss_targets(
     grid_elevation: xr.DataArray | None = None,
     hi_res_elevation: xr.DataArray | None = None,
     hi_res_tpi: xr.DataArray | None = None,
+    tpi_abs_max: float = 500.0,
     convert_to_kelvin: bool = False,
     year_start: int | None = None,
     device: torch.device | None = None,
@@ -937,7 +938,7 @@ def build_smacnp_context(
     lat_flat = era5_tensor[0, 1, :, :].reshape(N)           # (N,)
     lon_flat = era5_tensor[0, 2, :, :].reshape(N)           # (N,)
     alt_flat = era5_tensor[0, 5, :, :].reshape(N)           # (N,) already in [0,1]
-    mTPI_flat = torch.zeros(N, device=era5_tensor.device)   # (N,) — zero for coarse grid
+    mTPI_flat = torch.full((N,), 0.5, device=era5_tensor.device)   # (N,) — zero for coarse grid
 
     # Stack static attrs: (N, 4) = [lat, lon, alt, mTPI]
     static_attrs = torch.stack([lat_flat, lon_flat, alt_flat, mTPI_flat], dim=1)
@@ -1039,8 +1040,8 @@ def build_smacnp_targets(
     alt_norm = (true_elev - alt_min) / (alt_max - alt_min + 1e-8)
 
     # mTPI_min, mTPI_max = mTPI.min(), mTPI.max()
-    mTPI_min, mTPI_max = -200.0, 200.0
-    mTPI_norm = (mTPI - mTPI_min) / (mTPI_max - mTPI_min + 1e-8)
+    mTPI_norm = (mTPI + tpi_abs_max) / (2 * tpi_abs_max + 1e-8)
+
 
     # --- Static attributes: (T, M, 4) ---
     static_attrs = torch.stack([lat_norm, lon_norm, alt_norm, mTPI_norm], dim=1)  # (M, 4)
@@ -1139,6 +1140,7 @@ def prepare_peakweather_targets(
     metadata: 'Era5Metadata',
     era5_grid_elevation: xr.DataArray | None = None,
     device: torch.device | None = None,
+    tpi_abs_max: float = 500.0,
 ) -> torch.Tensor:
     if device is None:
         device = torch.device('cpu')
@@ -1159,7 +1161,7 @@ def prepare_peakweather_targets(
         method='nearest',
     ).values.astype(np.float32)
     tpi_vals = np.nan_to_num(tpi_vals, nan=0.0)
-    mTPI_norm = (tpi_vals - (-200.0)) / 400.0
+    mTPI_norm = (tpi_vals + tpi_abs_max) / (2 * tpi_abs_max)
 
     static_list = [lat_norm, lon_norm, alt_norm, mTPI_norm]
 
@@ -1210,6 +1212,7 @@ def build_pw_station_tensors(
     dates_pd: pd.DatetimeIndex,
     era5_grid_elevation: xr.DataArray | None = None,
     device: torch.device | None = None,
+    tpi_abs_max: float = 500.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Returns x (T, M, 6) and y_norm (T, M) for the given station subset.
@@ -1235,7 +1238,7 @@ def build_pw_station_tensors(
         method='nearest',
     ).values.astype(np.float32)
     tpi_vals = np.nan_to_num(tpi_vals, nan=0.0)
-    mTPI_norm = (tpi_vals - (-200.0)) / 400.0
+    mTPI_norm = (tpi_vals + tpi_abs_max) / (2 * tpi_abs_max)
 
     # Static attrs (M, 4 or 5)
     static_list = [lat_norm, lon_norm, alt_norm, mTPI_norm]
