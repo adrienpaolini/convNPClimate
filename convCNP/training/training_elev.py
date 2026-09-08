@@ -420,6 +420,16 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None,
     # Batch-level mode: variable target size per batch, return averaged scalars
     if npsplit_mode or exclusive_context:
         batch_lls, batch_maes = [], []
+
+        if npsplit_mode and len(held_out) > 0:
+            N_pw  = held_out[0]['x_pw'].shape[1]
+            frac  = val_context_fraction if val_context_fraction is not None \
+                    else 0.2 + torch.rand(1).item() * 0.6
+            n_ctx   = max(1, min(N_pw - 1, int(frac * N_pw)))
+            perm    = torch.randperm(N_pw)
+            ctx_idx = perm[:n_ctx]
+            tgt_idx = torch.arange(N_pw) if npsplit_inclusive else perm[n_ctx:]
+
         with torch.no_grad():
             for task in held_out:
                 if npsplit_mode:
@@ -427,12 +437,6 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None,
                     y_era5 = task['y_era5']
                     x_pw   = task['x_pw']
                     y_pw   = task['y_pw']
-                    N_pw   = x_pw.shape[1]
-                    frac   = 0.2 + torch.rand(1).item() * 0.6
-                    n_ctx  = max(1, min(N_pw - 1, int(frac * N_pw)))
-                    perm   = torch.randperm(N_pw)
-                    ctx_idx = perm[:n_ctx]
-                    tgt_idx = torch.arange(N_pw) if npsplit_inclusive else perm[n_ctx:]
                     B = x_era5.shape[0]
                     if x_pw.shape[-1] != x_era5.shape[-1]:
                         n_extra = x_pw.shape[-1] - x_era5.shape[-1]
