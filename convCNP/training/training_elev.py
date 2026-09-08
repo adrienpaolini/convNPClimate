@@ -411,7 +411,8 @@ def train_epoch_smacnp(model, opt, training_data, ll, device=None,
 
 
 def eval_epoch_smacnp(model, held_out, ll, get_value, device=None,
-                       npsplit_inclusive=False, exclusive_context=False):
+                       npsplit_inclusive=False, exclusive_context=False,
+                       val_context_fraction=None): 
     """Evaluate NLL and point metrics on the held-out fold."""
     model.eval()
     npsplit_mode = len(held_out) > 0 and 'x_era5' in held_out[0]
@@ -472,12 +473,24 @@ def eval_epoch_smacnp(model, held_out, ll, get_value, device=None,
         return eval_ll, med_mae, float('nan'), float('nan')
 
     # Standard mode: fixed target size per batch, compute per-station metrics
+    if val_context_fraction is not None and len(held_out) > 0:
+        N = held_out[0]['x_context'].shape[1]
+        n_ctx = max(1, int(val_context_fraction * N))
+        perm = torch.randperm(N, device=held_out[0]['x_context'].device)
+
     targets_list, preds_list = [], []
     with torch.no_grad():
         for task in held_out:
-            preds_list.append(model(task['x_context'],
-                                    task['y_context'],
-                                    task['x_target']))
+            if val_context_fraction is not None:
+                xc = task['x_context'][:, perm[:n_ctx], :]
+                yc = task['y_context'][:, perm[:n_ctx], :]
+                xt = task['x_target']      # all 137
+                yt = task['y_target']      # all 137
+                preds_list.append(model(xc, yc, xt))
+            else:
+                preds_list.append(model(task['x_context'],
+                                        task['y_context'],
+                                        task['x_target']))
             targets_list.append(task['y_target'])
 
     predictions      = torch.cat(preds_list)
@@ -524,7 +537,8 @@ def train_smacnp(model, opt, ll, output_dir, get_value, fold, n_folds,
                  context_fraction=None, exclusive_context=False,
                  x_context_val=None, y_context_val=None,
                  x_target_val=None,  y_target_val=None,
-                 npsplit_fraction=None, npsplit_inclusive=False):   
+                 npsplit_fraction=None, npsplit_inclusive=False,
+                 val_context_fraction=None):   
     """
     Top-level SMACNP training loop. Mirrors train_elev() in structure.
 
@@ -574,7 +588,8 @@ def train_smacnp(model, opt, ll, output_dir, get_value, fold, n_folds,
             test_obj, med_mae, med_pears, med_spear = eval_epoch_smacnp(
                 model, held_out, ll, get_value, device=device,
                 npsplit_inclusive=npsplit_inclusive,
-                exclusive_context=exclusive_context)
+                exclusive_context=exclusive_context, 
+                val_context_fraction=val_context_fraction)
 
             epoch_dur = time.time() - epoch_start
             epoch_durations.append(epoch_dur)
