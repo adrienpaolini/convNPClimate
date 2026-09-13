@@ -1487,18 +1487,22 @@ def load_attention_context(
     seasonal_features = ds.compute_seasonal_features(pw_times_np, device=device) \
                         if params.SEASONAL_FEATURES else None
     _, hi_res_tpi = ds.load_high_res_topography(topo_path)
+    tpi_abs_max = float(max(abs(float(hi_res_tpi.min())), abs(float(hi_res_tpi.max()))))
 
     x_context, y_context = ds.build_pw_station_tensors(
         daily_tmax=daily_tmean, station_ids=train_stations,
         stations_meta=stations_meta, hi_res_tpi=hi_res_tpi,
+        tpi_abs_max=tpi_abs_max,
         metadata=metadata, seasonal_features=seasonal_features,
         dates_pd=pw_dates_pd, device=device,
     )
+
     y_context = torch.nan_to_num(y_context.unsqueeze(-1), nan=0.0)
 
     x_target_static = ds.prepare_peakweather_targets(
         stations_meta=stations_meta.loc[test_stations],
-        hi_res_tpi=hi_res_tpi, metadata=metadata, device=device,
+        hi_res_tpi=hi_res_tpi, tpi_abs_max=tpi_abs_max,
+        metadata=metadata, device=device,
     )
 
     model, epoch = model_factory.load_model_checkpoint(
