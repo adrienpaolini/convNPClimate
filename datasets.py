@@ -992,6 +992,7 @@ def build_smacnp_targets(
     target_y_da: xr.DataArray,
     elev_tensor: torch.Tensor,
     seasonal_tensor: torch.Tensor,
+    tpi_abs_max: float = 500.0,
     device: torch.device | None = None,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
