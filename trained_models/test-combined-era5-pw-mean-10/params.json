@@ -20,7 +20,7 @@
     "SEED": 42,
     "TRIAL_NAME": "test-combined-era5-pw-mean-10",
     "RUN_TYPE": "cloud",
-    "DEVICE": "cpu",
+    "DEVICE": "cuda",
     "ERA5_MAX_TEMP_GLOB": "datasets/ERA5_Land/max_temperature/*.nc",
     "ERA5_GEOPOTENTIAL_GLOB": "datasets/ERA5_Land/geopotential/*.nc",
     "METEO_SWISS_MAX_TEMP_GLOB": "datasets/MeteoSwiss/TmaxD_v2.0_swiss.lv95/*.nc",
