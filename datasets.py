@@ -1138,7 +1138,6 @@ def prepare_peakweather_targets(
     stations_meta: pd.DataFrame,
     hi_res_tpi: xr.DataArray,
     metadata: 'Era5Metadata',
-    era5_grid_elevation: xr.DataArray | None = None,
     device: torch.device | None = None,
     tpi_abs_max: float = 500.0,
 ) -> torch.Tensor:
@@ -1165,14 +1164,7 @@ def prepare_peakweather_targets(
 
     static_list = [lat_norm, lon_norm, alt_norm, mTPI_norm]
 
-    if era5_grid_elevation is not None:
-        era5_alt_at_stations = era5_grid_elevation.interp(
-            latitude=xr.DataArray(lats, dims='point'),
-            longitude=xr.DataArray(lons, dims='point'),
-            method='nearest',
-        ).values.astype(np.float32)
-        elev_diff_norm = (alts - era5_alt_at_stations) / 4500.0
-        static_list.append(elev_diff_norm)
+
 
     x_pw_static = torch.tensor(
         np.stack(static_list, axis=1),
@@ -1210,7 +1202,6 @@ def build_pw_station_tensors(
     metadata: 'Era5Metadata',
     seasonal_features: torch.Tensor | None,
     dates_pd: pd.DatetimeIndex,
-    era5_grid_elevation: xr.DataArray | None = None,
     device: torch.device | None = None,
     tpi_abs_max: float = 500.0,
 ) -> tuple[torch.Tensor, torch.Tensor]:
@@ -1242,16 +1233,6 @@ def build_pw_station_tensors(
 
     # Static attrs (M, 4 or 5)
     static_list = [lat_norm, lon_norm, alt_norm, mTPI_norm]
-
-    if era5_grid_elevation is not None:
-        era5_alt_at_stations = era5_grid_elevation.interp(
-            latitude=xr.DataArray(lats, dims='point'),
-            longitude=xr.DataArray(lons, dims='point'),
-            method='nearest',
-        ).values.astype(np.float32)
-        elev_diff = alts - era5_alt_at_stations          # metres
-        elev_diff_norm = elev_diff / 4500.0              # same scale as alt_norm
-        static_list.append(elev_diff_norm)
 
     static = np.stack(static_list, axis=1)
     static_t = torch.tensor(static, dtype=torch.float32)
