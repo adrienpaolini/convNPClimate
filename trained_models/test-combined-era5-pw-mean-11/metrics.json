@@ -22,7 +22,7 @@
   "correlations": {
     "uncertainty_error": 0.6666099402838656,
     "altitude_error": 0.38721000893116114,
-    "mtpi_error": -0.013418984156969077,
+    "mtpi_error": -0.0134188181849402,
     "doy_error": -0.0479221573533954
   },
   "calibration": {

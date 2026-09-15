@@ -1040,7 +1040,7 @@ def build_smacnp_targets(
     alt_norm = (true_elev - alt_min) / (alt_max - alt_min + 1e-8)
 
     # mTPI_min, mTPI_max = mTPI.min(), mTPI.max()
-    mTPI_norm = (mTPI + tpi_abs_max) / (2 * tpi_abs_max + 1e-8)
+    mTPI_norm = (mTPI + tpi_abs_max) / (2 * tpi_abs_max)
 
 
     # --- Static attributes: (T, M, 4) ---

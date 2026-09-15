@@ -1103,6 +1103,7 @@ def plot_attention_maps(
     swiss_border_lats_2d: np.ndarray | None = None,
     swiss_valid_2d: np.ndarray | None = None,
     target_label: str = 'Target point',
+    show_source_split: bool = False,
 ) -> plt.Figure:
     """
     Plot Laplace, mean-attribute, and variance attention weights for one target point.
@@ -1298,25 +1299,30 @@ def plot_attention_maps(
 
 
 
-    def _plot_row(axes_row, weights, row_label):
+    def _plot_row(axes_row, weights, row_label, show_era5=True, show_pw=True):
         titles = ['Laplace (spatial)', 'Mean-attribute', 'Variance']
         for ax, w, title in zip(axes_row, weights, titles):
-            vmax = max(float(w.max()), 1e-8)
+            if show_era5 and not show_pw and era5_mask.any():
+                vmax = max(float(w[era5_mask].max()), 1e-8)
+            elif show_pw and not show_era5 and pw_mask.any():
+                vmax = max(float(w[pw_mask].max()), 1e-8)
+            else:
+                vmax = max(float(w.max()), 1e-8)
             if swiss_border_lons_2d is not None:
                 ax.pcolormesh(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
                               cmap='Greys', vmin=0, vmax=2, alpha=0.15,
                               shading='auto', zorder=1)
-            if era5_mask.any():
+            if era5_mask.any() and show_era5:
                 era5_grid = _era5_to_grid(w[era5_mask])
                 im = ax.pcolormesh(era5_lons_u, era5_lats_u, era5_grid,
                                    cmap='YlOrRd', vmin=0, vmax=vmax,
                                    shading='nearest', zorder=3)
                 plt.colorbar(im, ax=ax, label='Attention weight', shrink=0.6, fraction=0.05)
-            if pw_mask.any():
+            if pw_mask.any() and show_pw:
                 sc = ax.scatter(context_lons[pw_mask], context_lats[pw_mask],
                                 c=w[pw_mask], cmap='YlOrRd', vmin=0, vmax=vmax,
                                 s=50, zorder=4, edgecolors='k', linewidths=0.3)
-                if not era5_mask.any():
+                if not (era5_mask.any() and show_era5):
                     plt.colorbar(sc, ax=ax, label='Attention weight', shrink=0.6, fraction=0.05)
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
                        zorder=5, label=target_label)
@@ -1370,14 +1376,26 @@ def plot_attention_maps(
 
 
 
-    n_rows = (2 if show_average else 1) + (1 if show_similarity else 0)
+    n_rows = (2 if show_average else 1) + (2 if show_source_split and has_source_flag else 0) + (1 if show_similarity else 0)
     fig, axes = plt.subplots(n_rows, 3, figsize=(18, 5 * n_rows))
     if n_rows == 1:
         axes = axes[np.newaxis, :]
 
     _plot_row(axes[0], [laplace_w, mean_w, var_w], f'Day {day_idx}')
+    row_idx = 1
     if show_average:
-        _plot_row(axes[1], [laplace_avg, mean_avg, var_avg], f'Average over {T} days')
+        _plot_row(axes[row_idx], [laplace_avg, mean_avg, var_avg], f'Average over {T} days')
+        row_idx += 1
+    if show_source_split and has_source_flag:
+        avg_w = [laplace_avg if show_average else laplace_w,
+                 mean_avg    if show_average else mean_w,
+                 var_avg     if show_average else var_w]
+        label_sfx = f'Average over {T} days' if show_average else f'Day {day_idx}'
+        _plot_row(axes[row_idx], avg_w,
+                  f'ERA5 only — {label_sfx}', show_era5=True, show_pw=False)
+        row_idx += 1
+        _plot_row(axes[row_idx], avg_w,
+                  f'PW stations only — {label_sfx}', show_era5=False, show_pw=True)
     if show_similarity:
         _plot_similarity_row(axes[-1])
 
@@ -1530,10 +1548,12 @@ def load_attention_context(
     seasonal_features = ds.compute_seasonal_features(pw_times_np, device=device) \
                         if params.SEASONAL_FEATURES else None
     _, hi_res_tpi = ds.load_high_res_topography(topo_path)
+    tpi_abs_max = float(max(abs(float(hi_res_tpi.min())), abs(float(hi_res_tpi.max()))))
 
     x_context, y_context = ds.build_pw_station_tensors(
         daily_tmax=daily_tmean, station_ids=train_stations,
         stations_meta=stations_meta, hi_res_tpi=hi_res_tpi,
+        tpi_abs_max=tpi_abs_max,
         metadata=metadata, seasonal_features=seasonal_features,
         dates_pd=pw_dates_pd, device=device,
     )
@@ -1541,7 +1561,9 @@ def load_attention_context(
 
     x_target_static = ds.prepare_peakweather_targets(
         stations_meta=stations_meta.loc[test_stations],
-        hi_res_tpi=hi_res_tpi, metadata=metadata, device=device,
+        hi_res_tpi=hi_res_tpi, 
+        tpi_abs_max=tpi_abs_max,
+        metadata=metadata, device=device,
     )
 
     model, epoch = model_factory.load_model_checkpoint(
