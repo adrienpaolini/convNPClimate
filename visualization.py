@@ -1055,7 +1055,6 @@ def plot_training_curves(
 
     if save_path is not None:
         save_path = Path(save_path)
-        # Strip extension so callers can pass e.g. "plots/training.png"
         suffix = save_path.suffix
         stem = save_path.with_suffix('')
 
@@ -1175,7 +1174,49 @@ def plot_attention_maps(
     era5_lons_unique = np.sort(np.unique(np.round(context_lons, 6)))
     n_era5_lats = len(era5_lats_unique)
     n_era5_lons = len(era5_lons_unique)
-    context_is_regular = (n_era5_lats * n_era5_lons == x_context.shape[1])  # add this
+    context_is_regular = (n_era5_lats * n_era5_lons == x_context.shape[1])
+
+    # Split context into ERA5 grid cells and PW stations via source flag (index 6)
+    has_source_flag = x_context.shape[-1] >= 7
+    if has_source_flag:
+        source_flag = x_context[0, :, -1].cpu().numpy()
+        era5_mask = source_flag < 0.5
+        pw_mask   = ~era5_mask
+    elif context_is_regular:
+        # Pure ERA5 on regular grid
+        era5_mask = np.ones(x_context.shape[1], dtype=bool)
+        pw_mask   = np.zeros(x_context.shape[1], dtype=bool)
+    else:
+        # Pure irregular scatter context (e.g. PW-only) — show all as circles
+        era5_mask = np.zeros(x_context.shape[1], dtype=bool)
+        pw_mask   = np.ones(x_context.shape[1], dtype=bool)
+
+
+    era5_lats = context_lats[era5_mask]
+    era5_lons = context_lons[era5_mask]
+    era5_lats_u = np.sort(np.unique(np.round(era5_lats, 6)))
+    era5_lons_u = np.sort(np.unique(np.round(era5_lons, 6)))
+
+    def _era5_to_grid(w_era5_flat):
+        """Arrange flat ERA5 weights into (n_lats, n_lons) 2D array, masked to Switzerland."""
+        grid = np.full((len(era5_lats_u), len(era5_lons_u)), np.nan)
+        for lat_k, lon_k, wk in zip(era5_lats, era5_lons, w_era5_flat):
+            i = np.searchsorted(era5_lats_u, round(lat_k, 6))
+            j = np.searchsorted(era5_lons_u, round(lon_k, 6))
+            if 0 <= i < len(era5_lats_u) and 0 <= j < len(era5_lons_u):
+                grid[i, j] = wk
+        if swiss_border_lons_2d is not None:
+            from scipy.interpolate import griddata
+            era5_lat_2d, era5_lon_2d = np.meshgrid(era5_lats_u, era5_lons_u, indexing='ij')
+            inside = griddata(
+                np.column_stack([swiss_border_lats_2d.ravel(), swiss_border_lons_2d.ravel()]),
+                swiss_valid_2d.ravel().astype(float),
+                np.column_stack([era5_lat_2d.ravel(), era5_lon_2d.ravel()]),
+                method='nearest', fill_value=0.0,
+            ).reshape(era5_lat_2d.shape)
+            grid = np.where(inside > 0.5, grid, np.nan)
+        return grid
+
 
     if viz_grid_lats_1d is not None and viz_grid_lons_1d is not None:
         N, E = len(viz_grid_lats_1d), len(viz_grid_lons_1d)
@@ -1260,34 +1301,36 @@ def plot_attention_maps(
     def _plot_row(axes_row, weights, row_label):
         titles = ['Laplace (spatial)', 'Mean-attribute', 'Variance']
         for ax, w, title in zip(axes_row, weights, titles):
-            if context_is_regular:
-                im = ax.imshow(_prepare(w), cmap='YlOrRd', origin='lower', vmin=0,
-                               extent=mch_extent, aspect=geo_aspect)
-                plt.colorbar(im, ax=ax, label='Attention weight',  shrink=0.6, fraction=0.05)
-                if swiss_border_lons_2d is not None:
-                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
-                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=4)
-            else:
-                if swiss_border_lons_2d is not None:
-                    ax.pcolormesh(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
-                                  cmap='Greys', vmin=0, vmax=2, alpha=0.15,
-                                  shading='auto', zorder=1)
-                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
-                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=2)
-                sc = ax.scatter(context_lons, context_lats, c=w, cmap='YlOrRd',
-                                vmin=0, s=50, zorder=3, edgecolors='k', linewidths=0.3)
-                plt.colorbar(sc, ax=ax, label='Attention weight',  shrink=0.6, fraction=0.05)
-                ax.set_xlim(mch_extent[0], mch_extent[1])
-                ax.set_ylim(mch_extent[2], mch_extent[3])
-                ax.set_aspect(geo_aspect)
-                ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+            vmax = max(float(w.max()), 1e-8)
+            if swiss_border_lons_2d is not None:
+                ax.pcolormesh(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                              cmap='Greys', vmin=0, vmax=2, alpha=0.15,
+                              shading='auto', zorder=1)
+            if era5_mask.any():
+                era5_grid = _era5_to_grid(w[era5_mask])
+                im = ax.pcolormesh(era5_lons_u, era5_lats_u, era5_grid,
+                                   cmap='YlOrRd', vmin=0, vmax=vmax,
+                                   shading='nearest', zorder=3)
+                plt.colorbar(im, ax=ax, label='Attention weight', shrink=0.6, fraction=0.05)
+            if pw_mask.any():
+                sc = ax.scatter(context_lons[pw_mask], context_lats[pw_mask],
+                                c=w[pw_mask], cmap='YlOrRd', vmin=0, vmax=vmax,
+                                s=50, zorder=4, edgecolors='k', linewidths=0.3)
+                if not era5_mask.any():
+                    plt.colorbar(sc, ax=ax, label='Attention weight', shrink=0.6, fraction=0.05)
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
                        zorder=5, label=target_label)
+            ax.set_xlim(mch_extent[0], mch_extent[1])
+            ax.set_ylim(mch_extent[2], mch_extent[3])
+            ax.set_aspect(geo_aspect)
+            ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
             ax.set_title(f'{title}\n{row_label}')
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
             ax.legend()
             ax.set_facecolor('white')
+
+
 
     def _plot_similarity_row(axes_row):
         sim_data = [
@@ -1296,35 +1339,35 @@ def plot_attention_maps(
             (comb_sim, 'Combined attribute similarity\n(altitude + mTPI)'),
         ]
         for ax, (raw, title) in zip(axes_row, sim_data):
-            if context_is_regular:
-                im = ax.imshow(_to_sim_grid(raw), cmap='YlOrRd', origin='lower', vmin=0, vmax=1,
-                               extent=mch_extent, aspect=geo_aspect)
+            if swiss_border_lons_2d is not None:
+                ax.pcolormesh(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
+                              cmap='Greys', vmin=0, vmax=2, alpha=0.15,
+                              shading='auto', zorder=1)
+            if era5_mask.any():
+                era5_sim_grid = _era5_to_grid(raw[era5_mask])
+                im = ax.pcolormesh(era5_lons_u, era5_lats_u, era5_sim_grid,
+                                   cmap='YlOrRd', vmin=0, vmax=1,
+                                   shading='nearest', zorder=3)
                 plt.colorbar(im, ax=ax, label='Similarity (1 = identical)', shrink=0.6, fraction=0.05)
-                if swiss_border_lons_2d is not None:
-                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
-                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=4)
-            else:
-                if swiss_border_lons_2d is not None:
-                    ax.pcolormesh(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
-                                  cmap='Greys', vmin=0, vmax=2, alpha=0.15,
-                                  shading='auto', zorder=1)
-                    ax.contour(swiss_border_lons_2d, swiss_border_lats_2d, swiss_valid_2d,
-                               levels=[0.5], colors='#555555', linewidths=0.9, zorder=2)
-                sc = ax.scatter(context_lons, context_lats, c=raw, cmap='YlOrRd',
-                                vmin=0, vmax=1, s=50, zorder=3,
-                                edgecolors='k', linewidths=0.3)
-                plt.colorbar(sc, ax=ax, label='Similarity (1 = identical)',  shrink=0.6, fraction=0.05)
-                ax.set_xlim(mch_extent[0], mch_extent[1])
-                ax.set_ylim(mch_extent[2], mch_extent[3])
-                ax.set_aspect(geo_aspect)
-                ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
+            if pw_mask.any():
+                sc = ax.scatter(context_lons[pw_mask], context_lats[pw_mask],
+                                c=raw[pw_mask], cmap='YlOrRd', vmin=0, vmax=1,
+                                s=50, zorder=4, edgecolors='k', linewidths=0.3)
+                if not era5_mask.any():
+                    plt.colorbar(sc, ax=ax, label='Similarity (1 = identical)', shrink=0.6, fraction=0.05)
             ax.scatter([tgt_lon], [tgt_lat], marker='*', c='blue', s=250,
                        zorder=5, label=target_label)
+            ax.set_xlim(mch_extent[0], mch_extent[1])
+            ax.set_ylim(mch_extent[2], mch_extent[3])
+            ax.set_aspect(geo_aspect)
+            ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
             ax.set_title(title)
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
             ax.legend()
             ax.set_facecolor('white')
+
+
 
 
     n_rows = (2 if show_average else 1) + (1 if show_similarity else 0)
