@@ -542,7 +542,8 @@ def train_smacnp(model, opt, ll, output_dir, get_value, fold, n_folds,
                  x_context_val=None, y_context_val=None,
                  x_target_val=None,  y_target_val=None,
                  npsplit_fraction=None, npsplit_inclusive=False,
-                 val_context_fraction=None):   
+                 val_context_fraction=None,
+                 use_temporal_split=True):   
     """
     Top-level SMACNP training loop. Mirrors train_elev() in structure.
 
@@ -569,20 +570,23 @@ def train_smacnp(model, opt, ll, output_dir, get_value, fold, n_folds,
 
             if x_era5 is not None:
                 n_samples = x_era5.shape[0]
-                start, end = get_fold_holdout_indices(fold, n_folds, n_samples)
+                inds = get_fold_holdout_indices(fold, n_folds, n_samples) if use_temporal_split else (0, 0)
                 training_data, held_out = get_fold_data_smacnp_era5pw(
-                    (start, end), x_era5, y_era5, x_pw, y_pw,
+                    inds, x_era5, y_era5, x_pw, y_pw,
                     batch_size=batch_size,
                 )
             else:
                 n_samples = x_context.shape[0]
-                start, end = get_fold_holdout_indices(fold, n_folds, n_samples)
+                inds = get_fold_holdout_indices(fold, n_folds, n_samples) if use_temporal_split else (0, 0)
                 training_data, held_out = get_fold_data_smacnp(
-                    (start, end), x_context, y_context, x_target, y_target,
+                    inds, x_context, y_context, x_target, y_target,
                     batch_size=batch_size,
                     x_context_val=x_context_val, y_context_val=y_context_val,
                     x_target_val=x_target_val,   y_target_val=y_target_val,
                 )
+            if not use_temporal_split:
+                held_out = training_data
+
 
             train_obj = train_epoch_smacnp(model, opt, training_data, ll, device=device,
                                             context_fraction=context_fraction,
