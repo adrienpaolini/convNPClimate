@@ -1341,8 +1341,8 @@ def plot_attention_maps(
     def _plot_similarity_row(axes_row):
         sim_data = [
             (alt_sim,  'Altitude similarity'),
-            (mTPI_sim, 'mTPI similarity'),
-            (comb_sim, 'Combined attribute similarity\n(altitude + mTPI)'),
+            (mTPI_sim, 'TPI similarity'),
+            (comb_sim, 'Combined attribute similarity\n(altitude + TPI)'),
         ]
         for ax, (raw, title) in zip(axes_row, sim_data):
             if swiss_border_lons_2d is not None:
