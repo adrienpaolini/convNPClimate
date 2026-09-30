@@ -1299,8 +1299,8 @@ def plot_attention_maps(
 
 
 
-    def _plot_row(axes_row, weights, row_label, show_era5=True, show_pw=True):
-        titles = ['Laplace (spatial)', 'Mean-attribute', 'Variance']
+    def _plot_row(axes_row, weights, row_label='', show_era5=True, show_pw=True):
+        titles = ['Mean-location weights', 'Mean-attribute weights', 'Variance weights']
         for ax, w, title in zip(axes_row, weights, titles):
             if show_era5 and not show_pw and era5_mask.any():
                 vmax = max(float(w[era5_mask].max()), 1e-8)
@@ -1330,7 +1330,7 @@ def plot_attention_maps(
             ax.set_ylim(mch_extent[2], mch_extent[3])
             ax.set_aspect(geo_aspect)
             ax.yaxis.set_major_locator(plt.MultipleLocator(0.5))
-            ax.set_title(f'{title}\n{row_label}')
+            ax.set_title(f'{title}\n{row_label}' if row_label else title)
             ax.set_xlabel('Longitude')
             ax.set_ylabel('Latitude')
             ax.legend()
@@ -1384,7 +1384,7 @@ def plot_attention_maps(
     _plot_row(axes[0], [laplace_w, mean_w, var_w], f'Day {day_idx}')
     row_idx = 1
     if show_average:
-        _plot_row(axes[row_idx], [laplace_avg, mean_avg, var_avg], f'Average over {T} days')
+        _plot_row(axes[row_idx], [laplace_avg, mean_avg, var_avg])
         row_idx += 1
     if show_source_split and has_source_flag:
         avg_w = [laplace_avg if show_average else laplace_w,
