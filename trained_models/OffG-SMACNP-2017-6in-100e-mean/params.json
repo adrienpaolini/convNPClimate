@@ -41,6 +41,6 @@
     "USE_LAYER_NORM": false,
     "PW_TRAIN_FRAC": 0.8,
     "PW_VAL_FRAC": 0.0,
-    "STATION_SPLIT_SEED": 41,
+    "STATION_SPLIT_SEED": 42,
     "CONTEXT_TYPE": "peakweather"
 }

@@ -18,7 +18,7 @@
     "LOSS_FN": "gll",
     "N_FOLDS": 1,
     "SEED": 42,
-    "TRIAL_NAME": "Comb-SMACNP-2017-7in-100e-mean ",
+    "TRIAL_NAME": "Comb-SMACNP-2017-7in-100e-mean",
     "RUN_TYPE": "cloud",
     "DEVICE": "cuda",
     "ERA5_MAX_TEMP_GLOB": "datasets/ERA5_Land/max_temperature/*.nc",
