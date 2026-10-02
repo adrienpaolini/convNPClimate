@@ -18,7 +18,7 @@
     "LOSS_FN": "gll",
     "N_FOLDS": 5,
     "SEED": 42,
-    "TRIAL_NAME": "final-2014-30e-5f_baseline",
+    "TRIAL_NAME": "DS-ConvCNP-2014-5in-30e-max",
     "RUN_TYPE": "cloud",
     "DEVICE": "cuda",
     "ERA5_MAX_TEMP_GLOB": "datasets/ERA5_Land/max_temperature/*.nc",
