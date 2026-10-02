@@ -1,6 +1,6 @@
 {
   "config": {
-    "model_name": "final-2014-30e-5f-with_elevation",
+    "model_name": "DS-ConvCNP-2014-6in-30e-max",
     "input_data": "ERA5_GRID",
     "sparsity_type": "PERCENT",
     "sparsity_value": 1.0,
