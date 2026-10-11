@@ -36,5 +36,5 @@ SMACNP extends the Conditional Neural Process framework with multiple, separated
 2. **Attend** — a Laplace (distance-based) attention mechanism captures spatial dependencies, while a separate cross-attention mechanism captures dependencies in the explanatory attributes; a third encoder produces a representation used to estimate the variance
 3. **Decode** — the outputs of the encoders are combined by a decoder with two branches, producing a Gaussian predictive distribution (mean and variance) at each target location
 
-This removes the requirement, inherent to ConvCNP, that inputs and outputs be defined on a regular grid.
+Access to the datasets used in this project can be found here: https://drive.google.com/drive/folders/1icpi_XxNHusn0MR8YiFy8taAT13FLFqI?usp=sharing
 
