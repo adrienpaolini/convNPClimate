@@ -38,3 +38,5 @@ SMACNP extends the Conditional Neural Process framework with multiple, separated
 
 Access to the datasets used in this project can be found here: https://drive.google.com/drive/folders/1icpi_XxNHusn0MR8YiFy8taAT13FLFqI?usp=sharing
 
+Access to the models can be found here: https://drive.google.com/drive/folders/1ufxE2uPJUWm00cWRsjZ9nC8Hf0vgs2GJ?usp=sharing
+
